@@ -16,7 +16,7 @@
 - GitHub issue `#1` (Phase 1: self-CI lint workflow) is closed.
 - GitHub issue `#2` (Phase 2: SonarQube workflow) is closed.
 - GitHub issue `#3` (Phase 3: Node.js CI workflow) is closed.
-- GitHub issue `#4` (Phase 4: Python CI workflow) is open.
+- GitHub issue `#4` (Phase 4: Python CI workflow) is closed.
 - Last tracker sync: `2026-04-21`.
 
 ## Implemented capabilities (current state)
@@ -24,6 +24,7 @@
 - Reusable workflows:
   - `.github/workflows/ci-go.yml`
   - `.github/workflows/ci-node.yml`
+  - `.github/workflows/ci-python.yml`
   - `.github/workflows/docker-build.yml`
   - `.github/workflows/docker-release.yml`
   - `.github/workflows/helm-deploy.yml`
@@ -39,6 +40,7 @@
 - Composite actions:
   - `actions/setup-go`
   - `actions/setup-node`
+  - `actions/setup-python`
   - `actions/setup-doctl`
   - `actions/setup-helm`
   - `actions/docker-meta`
