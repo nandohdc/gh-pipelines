@@ -7,10 +7,11 @@ Current baseline:
 - Reusable workflows live in `.github/workflows/` and are consumed via `uses: nandohdc/gh-pipelines/.github/workflows/<name>.yml@v1`.
 - Composite actions live in `actions/<name>/action.yml` and are consumed via `uses: nandohdc/gh-pipelines/actions/<name>@v1`.
 - Internal self-CI lint workflow is in `.github/workflows/lint.yml` (issue `#1`, Phase 1, closed on `2026-04-21`).
+- SonarQube reusable workflow is in `.github/workflows/sonar-scan.yml` (issue `#2`, Phase 2, closed on `2026-04-21`).
+- Node.js reusable workflow is in `.github/workflows/ci-node.yml` (issue `#3`, Phase 3, closed on `2026-04-21`).
+- Python reusable workflow is in `.github/workflows/ci-python.yml` (issue `#4`, Phase 4, closed on `2026-04-21`).
 - Active roadmap issues:
-  - `#2` open (Phase 2: SonarQube reusable workflow)
-  - `#3` open (Phase 3: Node.js CI reusable workflow)
-  - `#4` open (Phase 4: Python CI reusable workflow)
+  - none (phases `#1` to `#4` completed and closed)
 - Release model is semver tags plus floating major (`v1.x.y` and `v1`).
 
 Files:

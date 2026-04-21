@@ -11,16 +11,21 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | Workflow | File | Purpose |
 | --- | --- | --- |
 | **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
+| **Node CI** | `ci-node.yml` | Lint, test, coverage, and audit for Node.js services |
+| **Python CI** | `ci-python.yml` | Lint, test, coverage, and audit for Python services |
 | **Docker Build** | `docker-build.yml` | Build + push images to GHCR |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
 | **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
+| **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with quality gate enforcement |
 
 ## Available Composite Actions
 
 | Action | Path | Purpose |
 | --- | --- | --- |
 | **Setup Go** | `actions/setup-go` | Go toolchain + module download + cache |
+| **Setup Node** | `actions/setup-node` | Node.js toolchain + package-manager-aware cache |
+| **Setup Python** | `actions/setup-python` | Python toolchain + dependency-aware pip cache |
 | **Setup Helm** | `actions/setup-helm` | Helm CLI + standard chart repos |
 | **Setup doctl** | `actions/setup-doctl` | DigitalOcean CLI + kubeconfig |
 | **Docker Meta** | `actions/docker-meta` | Standard image tags + OCI labels |

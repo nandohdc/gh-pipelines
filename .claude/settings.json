@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(actionlint:*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git branch:*)",
+      "Bash(git show:*)",
+      "Bash(git tag:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "Bash(gh workflow view:*)",
+      "Bash(gh workflow list:*)"
+    ]
+  }
+}

@@ -1,0 +1,248 @@
+# =============================================================================
+# ci-python.yml — Reusable Python CI pipeline
+# =============================================================================
+# Runs lint, test, coverage threshold checks, and optional dependency audit
+# for Python projects.
+#
+# Example caller:
+#   jobs:
+#     ci:
+#       uses: nandohdc/gh-pipelines/.github/workflows/ci-python.yml@v1
+#       with:
+#         python-version: "3.12"
+#         dependency-file: "requirements.txt"
+# =============================================================================
+
+name: ci-python
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to install."
+        type: string
+        required: false
+        default: "3.12"
+      dependency-file:
+        description: "Primary dependency file. Supports requirements.txt, pyproject.toml, and poetry.lock via detection."
+        type: string
+        required: false
+        default: "requirements.txt"
+      lint-paths:
+        description: "Space-separated paths passed to ruff."
+        type: string
+        required: false
+        default: "."
+      test-paths:
+        description: "Space-separated paths passed to pytest."
+        type: string
+        required: false
+        default: "tests/"
+      coverage-min:
+        description: "Minimum pytest coverage percentage."
+        type: number
+        required: false
+        default: 0
+      run-audit:
+        description: "Run pip-audit dependency vulnerability scan."
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: nandohdc/gh-pipelines/actions/setup-python@v1
+        with:
+          python-version: ${{ inputs.python-version }}
+          dependency-file: ${{ inputs.dependency-file }}
+
+      - name: Install project and lint dependencies
+        shell: bash
+        env:
+          DEPENDENCY_FILE: ${{ inputs.dependency-file }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+
+          dependency_file="${DEPENDENCY_FILE}"
+          resolved_dependency_file=""
+
+          if [ -n "${dependency_file}" ] && [ -f "${dependency_file}" ]; then
+            resolved_dependency_file="${dependency_file}"
+          elif [ -f requirements.txt ]; then
+            resolved_dependency_file="requirements.txt"
+          elif [ -f poetry.lock ]; then
+            resolved_dependency_file="poetry.lock"
+          elif [ -f pyproject.toml ]; then
+            resolved_dependency_file="pyproject.toml"
+          fi
+
+          if [ -z "${resolved_dependency_file}" ]; then
+            echo "::notice::No dependency file detected. Installing lint tools only."
+          elif [[ "${resolved_dependency_file}" == *.txt ]]; then
+            python -m pip install -r "${resolved_dependency_file}"
+          elif [ "${resolved_dependency_file}" = "poetry.lock" ] || [ "${resolved_dependency_file}" = "pyproject.toml" ]; then
+            if [ ! -f pyproject.toml ]; then
+              echo "::error::Detected ${resolved_dependency_file}, but pyproject.toml is required."
+              exit 1
+            fi
+            python -m pip install .
+          else
+            python -m pip install -r "${resolved_dependency_file}"
+          fi
+
+          python -m pip install ruff
+
+      - name: Ruff check
+        shell: bash
+        env:
+          LINT_PATHS: ${{ inputs.lint-paths }}
+        run: |
+          set -euo pipefail
+          IFS=' ' read -r -a lint_paths <<< "${LINT_PATHS}"
+          ruff check "${lint_paths[@]}"
+
+      - name: Ruff format check
+        shell: bash
+        env:
+          LINT_PATHS: ${{ inputs.lint-paths }}
+        run: |
+          set -euo pipefail
+          IFS=' ' read -r -a lint_paths <<< "${LINT_PATHS}"
+          ruff format --check "${lint_paths[@]}"
+
+  # ---------------------------------------------------------------------------
+  # Test + coverage threshold
+  # ---------------------------------------------------------------------------
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: nandohdc/gh-pipelines/actions/setup-python@v1
+        with:
+          python-version: ${{ inputs.python-version }}
+          dependency-file: ${{ inputs.dependency-file }}
+
+      - name: Install project and test dependencies
+        shell: bash
+        env:
+          DEPENDENCY_FILE: ${{ inputs.dependency-file }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+
+          dependency_file="${DEPENDENCY_FILE}"
+          resolved_dependency_file=""
+
+          if [ -n "${dependency_file}" ] && [ -f "${dependency_file}" ]; then
+            resolved_dependency_file="${dependency_file}"
+          elif [ -f requirements.txt ]; then
+            resolved_dependency_file="requirements.txt"
+          elif [ -f poetry.lock ]; then
+            resolved_dependency_file="poetry.lock"
+          elif [ -f pyproject.toml ]; then
+            resolved_dependency_file="pyproject.toml"
+          fi
+
+          if [ -z "${resolved_dependency_file}" ]; then
+            echo "::notice::No dependency file detected. Installing test tools only."
+          elif [[ "${resolved_dependency_file}" == *.txt ]]; then
+            python -m pip install -r "${resolved_dependency_file}"
+          elif [ "${resolved_dependency_file}" = "poetry.lock" ] || [ "${resolved_dependency_file}" = "pyproject.toml" ]; then
+            if [ ! -f pyproject.toml ]; then
+              echo "::error::Detected ${resolved_dependency_file}, but pyproject.toml is required."
+              exit 1
+            fi
+            python -m pip install .
+          else
+            python -m pip install -r "${resolved_dependency_file}"
+          fi
+
+          python -m pip install pytest pytest-cov
+
+      - name: Pytest with coverage threshold
+        shell: bash
+        env:
+          TEST_PATHS: ${{ inputs.test-paths }}
+          COVERAGE_MIN: ${{ inputs.coverage-min }}
+        run: |
+          set -euo pipefail
+          IFS=' ' read -r -a test_paths <<< "${TEST_PATHS}"
+          pytest "${test_paths[@]}" --cov=. --cov-report=term-missing --cov-fail-under="${COVERAGE_MIN}"
+
+  # ---------------------------------------------------------------------------
+  # Dependency audit (optional)
+  # ---------------------------------------------------------------------------
+  audit:
+    name: audit
+    if: inputs.run-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: nandohdc/gh-pipelines/actions/setup-python@v1
+        with:
+          python-version: ${{ inputs.python-version }}
+          dependency-file: ${{ inputs.dependency-file }}
+
+      - name: Install project dependencies and pip-audit
+        shell: bash
+        env:
+          DEPENDENCY_FILE: ${{ inputs.dependency-file }}
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+
+          dependency_file="${DEPENDENCY_FILE}"
+          resolved_dependency_file=""
+
+          if [ -n "${dependency_file}" ] && [ -f "${dependency_file}" ]; then
+            resolved_dependency_file="${dependency_file}"
+          elif [ -f requirements.txt ]; then
+            resolved_dependency_file="requirements.txt"
+          elif [ -f poetry.lock ]; then
+            resolved_dependency_file="poetry.lock"
+          elif [ -f pyproject.toml ]; then
+            resolved_dependency_file="pyproject.toml"
+          fi
+
+          if [ -z "${resolved_dependency_file}" ]; then
+            echo "::notice::No dependency file detected. Auditing tooling dependencies only."
+          elif [[ "${resolved_dependency_file}" == *.txt ]]; then
+            python -m pip install -r "${resolved_dependency_file}"
+          elif [ "${resolved_dependency_file}" = "poetry.lock" ] || [ "${resolved_dependency_file}" = "pyproject.toml" ]; then
+            if [ ! -f pyproject.toml ]; then
+              echo "::error::Detected ${resolved_dependency_file}, but pyproject.toml is required."
+              exit 1
+            fi
+            python -m pip install .
+          else
+            python -m pip install -r "${resolved_dependency_file}"
+          fi
+
+          python -m pip install pip-audit
+
+      - name: pip-audit
+        shell: bash
+        run: |
+          set -euo pipefail
+          pip-audit

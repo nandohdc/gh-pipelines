@@ -1,0 +1,69 @@
+name: "Setup Python"
+description: "Setup Python toolchain with dependency-aware pip cache defaults."
+
+inputs:
+  python-version:
+    description: "Python version to install."
+    required: false
+    default: "3.12"
+  dependency-file:
+    description: "Primary dependency file used for cache detection."
+    required: false
+    default: "requirements.txt"
+  cache:
+    description: "Enable pip dependency caching."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Detect dependency file for pip cache
+      id: detect-dependency-file
+      shell: bash
+      env:
+        REQUESTED_DEPENDENCY_FILE: ${{ inputs.dependency-file }}
+      run: |
+        set -euo pipefail
+
+        requested="${REQUESTED_DEPENDENCY_FILE}"
+        detected=""
+
+        if [ -n "${requested}" ] && [ -f "${requested}" ]; then
+          detected="${requested}"
+        elif [ -f requirements.txt ]; then
+          detected="requirements.txt"
+        elif [ -f poetry.lock ]; then
+          detected="poetry.lock"
+        elif [ -f pyproject.toml ]; then
+          detected="pyproject.toml"
+        fi
+
+        echo "dependency-file=${detected}" >> "${GITHUB_OUTPUT}"
+
+        if [ -n "${detected}" ]; then
+          echo "Using '${detected}' for pip cache dependency path."
+        else
+          echo "No dependency file detected; using setup-python default pip cache behavior."
+        fi
+
+    - name: Set up Python ${{ inputs.python-version }} (with cache + dependency file)
+      if: inputs.cache == 'true' && steps.detect-dependency-file.outputs.dependency-file != ''
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+        cache-dependency-path: ${{ steps.detect-dependency-file.outputs.dependency-file }}
+
+    - name: Set up Python ${{ inputs.python-version }} (with cache)
+      if: inputs.cache == 'true' && steps.detect-dependency-file.outputs.dependency-file == ''
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+        cache: pip
+
+    - name: Set up Python ${{ inputs.python-version }} (no cache)
+      if: inputs.cache != 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}

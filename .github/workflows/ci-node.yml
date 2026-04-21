@@ -1,0 +1,323 @@
+# =============================================================================
+# ci-node.yml — Reusable Node.js CI pipeline
+# =============================================================================
+# Runs lint, test, coverage threshold checks, and optional dependency audit
+# for Node.js/TypeScript projects.
+#
+# Example caller:
+#   jobs:
+#     ci:
+#       uses: nandohdc/gh-pipelines/.github/workflows/ci-node.yml@v1
+#       with:
+#         node-version: "20"
+#         package-manager: "npm"
+# =============================================================================
+
+name: ci-node
+
+on:
+  workflow_call:
+    inputs:
+      node-version:
+        description: "Node.js version to install."
+        type: string
+        required: false
+        default: "20"
+      package-manager:
+        description: "Package manager to use (npm|pnpm|yarn)."
+        type: string
+        required: false
+        default: "npm"
+      lint-script:
+        description: "npm/pnpm/yarn script name used for linting."
+        type: string
+        required: false
+        default: "lint"
+      test-script:
+        description: "npm/pnpm/yarn script name used for tests."
+        type: string
+        required: false
+        default: "test"
+      coverage-min:
+        description: "Minimum line coverage percentage. Set 0 to disable gating."
+        type: number
+        required: false
+        default: 0
+      run-audit:
+        description: "Run dependency vulnerability audit."
+        type: boolean
+        required: false
+        default: true
+      audit-level:
+        description: "Audit severity threshold (low|moderate|high|critical)."
+        type: string
+        required: false
+        default: "high"
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm|pnpm|yarn) ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+      - name: Enable Corepack
+        if: inputs.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm)
+              npm ci
+              ;;
+            pnpm)
+              pnpm install --frozen-lockfile
+              ;;
+            yarn)
+              yarn install --immutable || yarn install --frozen-lockfile
+              ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              exit 1
+              ;;
+          esac
+
+      - name: Run lint script
+        shell: bash
+        env:
+          LINT_SCRIPT: ${{ inputs.lint-script }}
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm)
+              npm run "${LINT_SCRIPT}"
+              ;;
+            pnpm)
+              pnpm run "${LINT_SCRIPT}"
+              ;;
+            yarn)
+              yarn "${LINT_SCRIPT}"
+              ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              exit 1
+              ;;
+          esac
+
+  # ---------------------------------------------------------------------------
+  # Test + coverage threshold
+  # ---------------------------------------------------------------------------
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm|pnpm|yarn) ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+      - name: Enable Corepack
+        if: inputs.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm)
+              npm ci
+              ;;
+            pnpm)
+              pnpm install --frozen-lockfile
+              ;;
+            yarn)
+              yarn install --immutable || yarn install --frozen-lockfile
+              ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              exit 1
+              ;;
+          esac
+
+      - name: Run tests and enforce coverage threshold
+        shell: bash
+        env:
+          TEST_SCRIPT: ${{ inputs.test-script }}
+          COVERAGE_MIN: ${{ inputs.coverage-min }}
+        run: |
+          set -euo pipefail
+
+          case "${{ inputs.package-manager }}" in
+            npm)
+              npm run "${TEST_SCRIPT}"
+              ;;
+            pnpm)
+              pnpm run "${TEST_SCRIPT}"
+              ;;
+            yarn)
+              yarn "${TEST_SCRIPT}"
+              ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              exit 1
+              ;;
+          esac
+
+          if ! awk -v t="${COVERAGE_MIN}" 'BEGIN {exit !(t+0 > 0)}'; then
+            echo "coverage-min=${COVERAGE_MIN}; skipping coverage gate."
+            exit 0
+          fi
+
+          if [ -f coverage/coverage-summary.json ]; then
+            coverage=$(node -e 'const fs=require("fs");const p="coverage/coverage-summary.json";const d=JSON.parse(fs.readFileSync(p,"utf8"));const v=d.total?.lines?.pct; if (typeof v !== "number") { process.exit(2); } process.stdout.write(String(v));')
+          elif [ -f coverage/lcov.info ]; then
+            coverage=$(awk -F: 'BEGIN{hit=0;found=0} /^LH:/{hit+=$2} /^LF:/{found+=$2} END{if(found==0){exit 2} printf "%.2f", (hit/found)*100}' coverage/lcov.info)
+          else
+            echo "::error::coverage-min is set to ${COVERAGE_MIN}, but coverage/coverage-summary.json or coverage/lcov.info was not found."
+            exit 1
+          fi
+
+          echo "Coverage: ${coverage}%  Threshold: ${COVERAGE_MIN}%"
+
+          if awk -v c="${coverage}" -v t="${COVERAGE_MIN}" 'BEGIN {exit !(c+0 >= t+0)}'; then
+            echo "Coverage gate passed."
+          else
+            echo "::error::Coverage ${coverage}% is below threshold ${COVERAGE_MIN}%"
+            exit 1
+          fi
+
+  # ---------------------------------------------------------------------------
+  # Dependency audit (optional)
+  # ---------------------------------------------------------------------------
+  audit:
+    name: audit
+    if: inputs.run-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm|pnpm|yarn) ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              exit 1
+              ;;
+          esac
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+      - name: Enable Corepack
+        if: inputs.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm)
+              npm ci
+              ;;
+            pnpm)
+              pnpm install --frozen-lockfile
+              ;;
+            yarn)
+              yarn install --immutable || yarn install --frozen-lockfile
+              ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              exit 1
+              ;;
+          esac
+
+      - name: Run dependency audit
+        shell: bash
+        env:
+          AUDIT_LEVEL: ${{ inputs.audit-level }}
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm)
+              npm audit --audit-level="${AUDIT_LEVEL}"
+              ;;
+            pnpm)
+              pnpm audit --audit-level "${AUDIT_LEVEL}"
+              ;;
+            yarn)
+              if yarn npm audit --help >/dev/null 2>&1; then
+                yarn npm audit --severity "${AUDIT_LEVEL}"
+              else
+                yarn audit --level "${AUDIT_LEVEL}"
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              exit 1
+              ;;
+          esac

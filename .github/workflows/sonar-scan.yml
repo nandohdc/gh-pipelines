@@ -1,0 +1,81 @@
+# =============================================================================
+# sonar-scan.yml — Reusable SonarQube scan workflow
+# =============================================================================
+# Runs SonarQube analysis and enforces quality gate checks.
+# The scan step always runs before quality gate; a red gate fails the job.
+#
+# Example caller:
+#   jobs:
+#     sonar:
+#       uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
+#       permissions:
+#         contents: read
+#         pull-requests: read
+#       with:
+#         working-directory: "."
+#         quality-gate-timeout-minutes: 5
+#         extra-scan-args: ""
+#       secrets:
+#         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+#         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+# =============================================================================
+
+name: sonar-scan
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory containing source code and sonar-project.properties."
+        type: string
+        required: false
+        default: "."
+      quality-gate-timeout-minutes:
+        description: "Maximum time in minutes to wait for quality gate status."
+        type: number
+        required: false
+        default: 5
+      extra-scan-args:
+        description: "Extra arguments passed to SonarQube scanner."
+        type: string
+        required: false
+        default: ""
+    secrets:
+      SONAR_TOKEN:
+        description: "SonarQube token for authentication."
+        required: true
+      SONAR_HOST_URL:
+        description: "SonarQube server URL."
+        required: true
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  scan:
+    name: sonar-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
+        with:
+          projectBaseDir: ${{ inputs.working-directory }}
+          args: ${{ inputs.extra-scan-args }}
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+
+      - name: SonarQube quality gate
+        timeout-minutes: ${{ inputs.quality-gate-timeout-minutes }}
+        uses: SonarSource/sonarqube-quality-gate-action@d304d050d930b02a896b0f85935344f023928496 # v1
+        with:
+          scanMetadataReportFile: ${{ inputs.working-directory }}/.scannerwork/report-task.txt
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

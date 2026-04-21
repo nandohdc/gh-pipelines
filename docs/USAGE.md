@@ -59,6 +59,107 @@ jobs:
 
 ---
 
+### ci-node.yml — Node.js CI Pipeline
+
+Reusable CI workflow for Node.js/TypeScript services with lint, tests, coverage threshold gating, and optional dependency audit.
+
+**Trigger:** `workflow_call`
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `node-version` | string | no | `20` | Node.js version to install |
+| `package-manager` | string | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
+| `lint-script` | string | no | `lint` | Script name used for linting |
+| `test-script` | string | no | `test` | Script name used for tests |
+| `coverage-min` | number | no | `0` | Minimum line coverage percentage (`0` disables gate) |
+| `run-audit` | boolean | no | `true` | Run dependency audit job |
+| `audit-level` | string | no | `high` | Audit severity threshold |
+
+#### Jobs
+
+1. **lint** — install dependencies + run lint script
+2. **test** — install dependencies + run test script + optional coverage gate
+3. **audit** — install dependencies + run audit scan (conditional)
+
+Coverage gate behavior:
+- If `coverage-min` is `0`, the gate is skipped.
+- If `coverage-min` is greater than `0`, workflow reads coverage from `coverage/coverage-summary.json` (preferred) or `coverage/lcov.info`.
+
+#### Example
+
+```yaml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-node.yml@v1
+    with:
+      node-version: "20"
+      package-manager: "npm"
+      lint-script: "lint"
+      test-script: "test:coverage"
+      coverage-min: 70
+      run-audit: true
+      audit-level: "high"
+```
+
+---
+
+### ci-python.yml — Python CI Pipeline
+
+Reusable CI workflow for Python services with ruff linting, pytest coverage threshold gating, and optional dependency audit.
+
+**Trigger:** `workflow_call`
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `python-version` | string | no | `3.12` | Python version to install |
+| `dependency-file` | string | no | `requirements.txt` | Primary dependency file (supports detection of `requirements.txt`, `pyproject.toml`, `poetry.lock`) |
+| `lint-paths` | string | no | `.` | Space-separated paths passed to ruff |
+| `test-paths` | string | no | `tests/` | Space-separated paths passed to pytest |
+| `coverage-min` | number | no | `0` | Minimum pytest coverage percentage |
+| `run-audit` | boolean | no | `true` | Run `pip-audit` dependency scan job |
+
+#### Jobs
+
+1. **lint** — install dependencies + run `ruff check` and `ruff format --check`
+2. **test** — install dependencies + run `pytest` with `--cov-fail-under`
+3. **audit** — install dependencies + run `pip-audit` (conditional)
+
+Coverage gate behavior:
+- `coverage-min` is passed directly to `pytest --cov-fail-under=<value>`.
+- `0` keeps the coverage gate effectively disabled while still collecting coverage output.
+
+Dependency file behavior:
+- Uses `dependency-file` when it exists.
+- Falls back to `requirements.txt`, then `poetry.lock`, then `pyproject.toml`.
+- `pyproject.toml` / `poetry.lock` paths install project dependencies via `pip install .`.
+
+#### Example
+
+```yaml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-python.yml@v1
+    with:
+      python-version: "3.12"
+      dependency-file: "requirements.txt"
+      lint-paths: "."
+      test-paths: "tests/"
+      coverage-min: 80
+      run-audit: true
+```
+
+---
+
 ### docker-build.yml — Docker Build + Push
 
 Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch.
@@ -222,6 +323,55 @@ jobs:
 
 ---
 
+### sonar-scan.yml — SonarQube Scan + Quality Gate
+
+Runs SonarQube analysis and waits for quality gate status. The workflow always executes both scan and quality gate steps; a failed gate fails the job.
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
+| `quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
+| `extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
+
+#### Secrets
+
+| Secret | Required | Description |
+| --- | --- | --- |
+| `SONAR_TOKEN` | **yes** | SonarQube token |
+| `SONAR_HOST_URL` | **yes** | SonarQube server URL |
+
+#### Consumer Prerequisites
+
+1. Create repository secrets `SONAR_TOKEN` and `SONAR_HOST_URL`.
+2. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
+3. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
+4. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
+
+#### Example
+
+```yaml
+name: sonar
+on: [push, pull_request]
+
+jobs:
+  sonar:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
+    with:
+      working-directory: "."
+      quality-gate-timeout-minutes: 5
+      extra-scan-args: ""
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+```
+
+---
+
 ## Composite Actions
 
 ### actions/setup-go
@@ -230,6 +380,22 @@ jobs:
 | --- | --- | --- | --- |
 | `go-version` | no | `1.26.2` | Go version |
 | `cache` | no | `true` | Enable module cache |
+
+### actions/setup-node
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `node-version` | no | `20` | Node.js version |
+| `package-manager` | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
+| `cache` | no | `true` | Enable dependency cache for selected manager |
+
+### actions/setup-python
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `python-version` | no | `3.12` | Python version |
+| `dependency-file` | no | `requirements.txt` | Primary dependency file used for pip cache detection |
+| `cache` | no | `true` | Enable pip cache |
 
 ### actions/setup-helm
 

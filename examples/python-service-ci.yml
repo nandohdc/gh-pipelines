@@ -1,0 +1,23 @@
+# =============================================================================
+# Example: Python service CI caller workflow
+# =============================================================================
+# Copy this file to your Python repository at .github/workflows/ci.yml
+# and adjust the inputs to match your project.
+# =============================================================================
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-python.yml@v1
+    with:
+      python-version: "3.12"
+      dependency-file: "requirements.txt"
+      lint-paths: "."
+      test-paths: "tests/"
+      coverage-min: 80
+      run-audit: true

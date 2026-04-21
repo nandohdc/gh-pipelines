@@ -1,0 +1,24 @@
+# =============================================================================
+# Example: Node.js service CI caller workflow
+# =============================================================================
+# Copy this file to your Node.js repository at .github/workflows/ci.yml
+# and adjust the inputs to match your project.
+# =============================================================================
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-node.yml@v1
+    with:
+      node-version: "20"
+      package-manager: "npm"
+      lint-script: "lint"
+      test-script: "test:coverage"
+      coverage-min: 70
+      run-audit: true
+      audit-level: "high"

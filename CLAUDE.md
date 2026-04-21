@@ -11,7 +11,13 @@ The repo exposes two artifact kinds:
 - **Reusable workflows** in `.github/workflows/` — each uses `on: workflow_call` and is referenced as `nandohdc/gh-pipelines/.github/workflows/<name>.yml@v1`.
 - **Composite actions** in `actions/<name>/action.yml` — referenced as `nandohdc/gh-pipelines/actions/<name>@v1`.
 
-Reusable workflows compose composite actions (e.g. `ci-go.yml` calls `actions/setup-go`, `helm-deploy.yml` calls both `actions/setup-doctl` and `actions/setup-helm`). When editing, prefer pushing shared logic down into a composite action rather than duplicating steps across workflows.
+Reusable workflows compose composite actions (e.g. `ci-go.yml` calls `actions/setup-go`, `ci-node.yml` calls `actions/setup-node`, `ci-python.yml` calls `actions/setup-python`, `helm-deploy.yml` calls both `actions/setup-doctl` and `actions/setup-helm`). When editing, prefer pushing shared logic down into a composite action rather than duplicating steps across workflows.
+
+Current artifacts:
+
+- Reusable workflows: `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `docker-build.yml`, `docker-release.yml`, `helm-deploy.yml`, `lint.yml`, `security-scan.yml`, `sonar-scan.yml`.
+- Composite actions: `docker-meta`, `setup-doctl`, `setup-go`, `setup-helm`, `setup-node`, `setup-python`.
+- Every reusable workflow has a matching example in `examples/` (`go-service-ci.yml`, `node-service-ci.yml`, `python-service-ci.yml`, `docker-release.yml`, `helm-deploy.yml`, `sonar-scan.yml`).
 
 ## Commands
 
@@ -50,4 +56,6 @@ These are enforced across every workflow/action — match them when adding or ed
 
 - `helm-deploy.yml` hardcodes a DigitalOcean `cluster-id` default (`adc9fd65-…`). Callers can override, but changing that default is a breaking change for repos that rely on it.
 - `ci-go.yml` conditionally shells out to consumer-repo files that this repo doesn't own: `./scripts/check-gofmt.sh` (optional, falls back to inline `gofmt`), `./scripts/check-import-direction.sh` (when `run-import-direction: true`), and `make contract` (when `run-contract: true`). When modifying those jobs, preserve the opt-in toggles — consumers without those scripts rely on the defaults staying `false`.
+- `ci-node.yml` is intentionally self-contained for cross-repo calls — it does not `uses:` the local `actions/setup-node` via a relative path. When editing, keep setup steps inline so consumers pulling `@v1` resolve everything from a single ref. The same constraint applies to `ci-python.yml`.
+- `sonar-scan.yml` uses `workflow_call` secrets (`SONAR_TOKEN`, `SONAR_HOST_URL`) — callers must forward them explicitly under `secrets:`. The caller job also needs `permissions: contents: read, pull-requests: read` for PR decoration. Both are documented in the workflow header.
 - `docker-release.yml` references the image by digest (`${image}@${digest}`) for SBOM, cosign, and attestation steps. Keep that pattern — signing/attesting by tag is racy.
