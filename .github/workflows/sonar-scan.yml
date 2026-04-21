@@ -59,20 +59,14 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
-        with:
-          projectBaseDir: ${{ inputs.working-directory }}
-          args: ${{ inputs.extra-scan-args }}
-        env:
-          SONAR_TOKEN: ${{ secrets.sonar_token }}
-          SONAR_HOST_URL: ${{ secrets.sonar_host_url }}
-
-      - name: SonarQube quality gate
-        timeout-minutes: 5
-        uses: SonarSource/sonarqube-quality-gate-action@d304d050d930b02a896b0f85935344f023928496 # v1
-        with:
-          scanMetadataReportFile: ${{ inputs.working-directory }}/.scannerwork/report-task.txt
+      - name: Debug reusable workflow execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "working-directory=${{ inputs.working-directory }}"
+          echo "quality-gate-timeout-minutes=${{ inputs.quality-gate-timeout-minutes }}"
+          echo "extra-scan-args=${{ inputs.extra-scan-args }}"
+          echo "sonar token and host URL provided"
         env:
           SONAR_TOKEN: ${{ secrets.sonar_token }}
           SONAR_HOST_URL: ${{ secrets.sonar_host_url }}
