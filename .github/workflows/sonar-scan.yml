@@ -38,10 +38,10 @@ on:
         required: false
         default: ""
     secrets:
-      SONAR_TOKEN:
+      sonar_token:
         description: "SonarQube token for authentication."
         required: true
-      SONAR_HOST_URL:
+      sonar_host_url:
         description: "SonarQube server URL."
         required: true
 
@@ -65,8 +65,8 @@ jobs:
           projectBaseDir: ${{ inputs.working-directory }}
           args: ${{ inputs.extra-scan-args }}
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.sonar_token }}
+          SONAR_HOST_URL: ${{ secrets.sonar_host_url }}
 
       - name: SonarQube quality gate
         timeout-minutes: 5
@@ -74,5 +74,5 @@ jobs:
         with:
           scanMetadataReportFile: ${{ inputs.working-directory }}/.scannerwork/report-task.txt
         env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+          SONAR_TOKEN: ${{ secrets.sonar_token }}
+          SONAR_HOST_URL: ${{ secrets.sonar_host_url }}
