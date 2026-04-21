@@ -7,11 +7,12 @@ on:
       - phase-2-branch
 
 jobs:
-  ci-smoke:
-    uses: ./.github/workflows/ci-go.yml
+  sonar:
+    uses: ./.github/workflows/sonar-scan.yml
     with:
-      run-integration: false
-      run-contract: false
-      run-import-direction: false
-      run-k8s-validate: false
-      run-prometheus-validate: false
+      working-directory: "."
+      quality-gate-timeout-minutes: 5
+      extra-scan-args: ""
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
