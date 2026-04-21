@@ -68,8 +68,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout shared actions
+        uses: actions/checkout@v4
+        with:
+          repository: nandohdc/gh-pipelines
+          ref: ${{ github.workflow_sha }}
+          path: .gh-pipelines
+
       - name: Setup Node
-        uses: ./actions/setup-node
+        uses: ./.gh-pipelines/actions/setup-node
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
@@ -126,8 +133,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout shared actions
+        uses: actions/checkout@v4
+        with:
+          repository: nandohdc/gh-pipelines
+          ref: ${{ github.workflow_sha }}
+          path: .gh-pipelines
+
       - name: Setup Node
-        uses: ./actions/setup-node
+        uses: ./.gh-pipelines/actions/setup-node
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
@@ -210,8 +224,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout shared actions
+        uses: actions/checkout@v4
+        with:
+          repository: nandohdc/gh-pipelines
+          ref: ${{ github.workflow_sha }}
+          path: .gh-pipelines
+
       - name: Setup Node
-        uses: ./actions/setup-node
+        uses: ./.gh-pipelines/actions/setup-node
         with:
           node-version: ${{ inputs.node-version }}
           package-manager: ${{ inputs.package-manager }}
