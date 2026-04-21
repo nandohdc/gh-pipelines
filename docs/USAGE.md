@@ -59,6 +59,55 @@ jobs:
 
 ---
 
+### ci-node.yml — Node.js CI Pipeline
+
+Reusable CI workflow for Node.js/TypeScript services with lint, tests, coverage threshold gating, and optional dependency audit.
+
+**Trigger:** `workflow_call`
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `node-version` | string | no | `20` | Node.js version to install |
+| `package-manager` | string | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
+| `lint-script` | string | no | `lint` | Script name used for linting |
+| `test-script` | string | no | `test` | Script name used for tests |
+| `coverage-min` | number | no | `0` | Minimum line coverage percentage (`0` disables gate) |
+| `run-audit` | boolean | no | `true` | Run dependency audit job |
+| `audit-level` | string | no | `high` | Audit severity threshold |
+
+#### Jobs
+
+1. **lint** — install dependencies + run lint script
+2. **test** — install dependencies + run test script + optional coverage gate
+3. **audit** — install dependencies + run audit scan (conditional)
+
+Coverage gate behavior:
+- If `coverage-min` is `0`, the gate is skipped.
+- If `coverage-min` is greater than `0`, workflow reads coverage from `coverage/coverage-summary.json` (preferred) or `coverage/lcov.info`.
+
+#### Example
+
+```yaml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-node.yml@v1
+    with:
+      node-version: "20"
+      package-manager: "npm"
+      lint-script: "lint"
+      test-script: "test:coverage"
+      coverage-min: 70
+      run-audit: true
+      audit-level: "high"
+```
+
+---
+
 ### docker-build.yml — Docker Build + Push
 
 Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch.
@@ -279,6 +328,14 @@ jobs:
 | --- | --- | --- | --- |
 | `go-version` | no | `1.26.2` | Go version |
 | `cache` | no | `true` | Enable module cache |
+
+### actions/setup-node
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `node-version` | no | `20` | Node.js version |
+| `package-manager` | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
+| `cache` | no | `true` | Enable dependency cache for selected manager |
 
 ### actions/setup-helm
 

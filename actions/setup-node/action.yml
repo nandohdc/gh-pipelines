@@ -1,0 +1,52 @@
+name: "Setup Node"
+description: "Setup Node.js with package-manager-aware dependency caching."
+
+inputs:
+  node-version:
+    description: "Node.js version to install."
+    required: false
+    default: "20"
+  package-manager:
+    description: "Package manager to use (npm|pnpm|yarn)."
+    required: false
+    default: "npm"
+  cache:
+    description: "Enable package-manager dependency cache."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate package manager
+      shell: bash
+      run: |
+        set -euo pipefail
+        case "${{ inputs.package-manager }}" in
+          npm|pnpm|yarn) ;;
+          *)
+            echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+            exit 1
+            ;;
+        esac
+
+    - name: Set up Node ${{ inputs.node-version }} (with cache)
+      if: inputs.cache == 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.package-manager }}
+        cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+    - name: Set up Node ${{ inputs.node-version }} (no cache)
+      if: inputs.cache != 'true'
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Enable Corepack
+      if: inputs.package-manager != 'npm'
+      shell: bash
+      run: |
+        set -euo pipefail
+        corepack enable
