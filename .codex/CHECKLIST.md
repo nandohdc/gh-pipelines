@@ -1,0 +1,38 @@
+# Delivery Checklist
+
+Use this checklist before finishing any Codex task in this repository.
+
+## Scope and boundaries
+
+- Confirm the change fits this repo purpose (shared workflows/actions, examples, docs).
+- Confirm reusable interface changes are intentional and backward-compatible unless explicitly scoped as breaking.
+- Confirm no secrets or sensitive values are added to tracked files.
+
+## Behavior and safety
+
+- Confirm workflow permissions are least-privilege.
+- Confirm every `shell: bash` script uses `set -euo pipefail`.
+- Confirm reusable workflow inputs have complete interface metadata.
+- Confirm internal-only workflows are not accidentally exposed as `workflow_call`.
+- Confirm third-party lint/security actions are pinned by SHA where required.
+
+## Tests and checks
+
+- Run:
+  - `actionlint .github/workflows/*.yml`
+- If touching one workflow repeatedly, also run:
+  - `actionlint .github/workflows/<name>.yml`
+- If behavior changed (not just docs/style), validate from a consumer repo using a branch-pinned `uses:` reference.
+
+## Documentation and tracker sync
+
+- If interface changed, update:
+  - `README.md`
+  - `docs/USAGE.md`
+  - relevant `examples/*.yml`
+- Keep `.codex/README.md` and `.codex/CONTEXT.md` aligned with current issue phase status.
+
+## Completion
+
+- Ensure the diff contains only intended files.
+- Summarize what changed and which checks were executed.
