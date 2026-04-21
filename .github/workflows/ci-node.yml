@@ -68,18 +68,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout shared actions
-        uses: actions/checkout@v4
-        with:
-          repository: nandohdc/gh-pipelines
-          ref: ${{ github.workflow_sha }}
-          path: .gh-pipelines
+      - name: Validate package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm|pnpm|yarn) ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              exit 1
+              ;;
+          esac
 
       - name: Setup Node
-        uses: ./.gh-pipelines/actions/setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          package-manager: ${{ inputs.package-manager }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+      - name: Enable Corepack
+        if: inputs.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
 
       - name: Install dependencies
         shell: bash
@@ -133,18 +146,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout shared actions
-        uses: actions/checkout@v4
-        with:
-          repository: nandohdc/gh-pipelines
-          ref: ${{ github.workflow_sha }}
-          path: .gh-pipelines
+      - name: Validate package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm|pnpm|yarn) ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              exit 1
+              ;;
+          esac
 
       - name: Setup Node
-        uses: ./.gh-pipelines/actions/setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          package-manager: ${{ inputs.package-manager }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+      - name: Enable Corepack
+        if: inputs.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
 
       - name: Install dependencies
         shell: bash
@@ -224,18 +250,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Checkout shared actions
-        uses: actions/checkout@v4
-        with:
-          repository: nandohdc/gh-pipelines
-          ref: ${{ github.workflow_sha }}
-          path: .gh-pipelines
+      - name: Validate package manager
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "${{ inputs.package-manager }}" in
+            npm|pnpm|yarn) ;;
+            *)
+              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              exit 1
+              ;;
+          esac
 
       - name: Setup Node
-        uses: ./.gh-pipelines/actions/setup-node
+        uses: actions/setup-node@v4
         with:
           node-version: ${{ inputs.node-version }}
-          package-manager: ${{ inputs.package-manager }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
+
+      - name: Enable Corepack
+        if: inputs.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          corepack enable
 
       - name: Install dependencies
         shell: bash
