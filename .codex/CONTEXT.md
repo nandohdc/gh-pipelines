@@ -14,7 +14,7 @@
 ## Tracker status
 
 - GitHub issue `#1` (Phase 1: self-CI lint workflow) is closed.
-- GitHub issue `#2` (Phase 2: SonarQube workflow) is open.
+- GitHub issue `#2` (Phase 2: SonarQube workflow) is closed.
 - GitHub issue `#3` (Phase 3: Node.js CI workflow) is open.
 - GitHub issue `#4` (Phase 4: Python CI workflow) is open.
 - Last tracker sync: `2026-04-21`.
@@ -27,6 +27,7 @@
   - `.github/workflows/docker-release.yml`
   - `.github/workflows/helm-deploy.yml`
   - `.github/workflows/security-scan.yml`
+  - `.github/workflows/sonar-scan.yml`
 - Internal repository self-CI lint workflow:
   - `.github/workflows/lint.yml`
   - triggers on `pull_request` to `main` and `push` to `main`
