@@ -1,0 +1,88 @@
+# gh-pipelines
+
+Centralized, reusable GitHub Actions workflows and composite actions for the `nandohdc` ecosystem.
+
+## Why
+
+Instead of duplicating CI/CD logic across every repository, this repo provides **reusable workflows** (`workflow_call`) and **composite actions** that any repository can reference. Update pipeline logic once, every consumer inherits the change.
+
+## Available Workflows
+
+| Workflow | File | Purpose |
+| --- | --- | --- |
+| **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
+| **Docker Build** | `docker-build.yml` | Build + push images to GHCR |
+| **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
+| **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
+| **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
+
+## Available Composite Actions
+
+| Action | Path | Purpose |
+| --- | --- | --- |
+| **Setup Go** | `actions/setup-go` | Go toolchain + module download + cache |
+| **Setup Helm** | `actions/setup-helm` | Helm CLI + standard chart repos |
+| **Setup doctl** | `actions/setup-doctl` | DigitalOcean CLI + kubeconfig |
+| **Docker Meta** | `actions/docker-meta` | Standard image tags + OCI labels |
+
+## Quick Start
+
+### Using a reusable workflow
+
+```yaml
+# .github/workflows/ci.yml in your Go service repo
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
+    with:
+      go-version: "1.26.2"
+      coverage-min: "65.0"
+      run-integration: true
+      run-contract: true
+      run-import-direction: true
+      run-k8s-validate: true
+      run-prometheus-validate: true
+```
+
+### Using a composite action
+
+```yaml
+steps:
+  - uses: actions/checkout@v4
+  - uses: nandohdc/gh-pipelines/actions/setup-go@v1
+    with:
+      go-version: "1.26.2"
+```
+
+## Versioning
+
+This repository uses **tag-based versioning**:
+
+- `v1` — floating major tag (recommended for consumers)
+- `v1.0.0` — exact semantic version
+
+Pin to the major version (`@v1`) to automatically receive backward-compatible updates. Pin to an exact version (`@v1.0.0`) for maximum stability.
+
+## Repository Layout
+
+```
+.github/workflows/    Reusable workflows (workflow_call triggers)
+actions/              Composite actions for shared steps
+docs/                 Usage and contribution guides
+examples/             Copy-paste caller workflow examples
+```
+
+## Documentation
+
+- [Usage Guide](docs/USAGE.md) — Detailed reference for every workflow and action
+- [Contributing Guide](docs/CONTRIBUTING.md) — How to add or modify workflows
+
+## License
+
+[MIT](LICENSE)

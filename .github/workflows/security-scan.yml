@@ -1,0 +1,96 @@
+# =============================================================================
+# security-scan.yml — Reusable container security scan workflow
+# =============================================================================
+# Scans a Docker image for known CVEs using Trivy.
+# Can scan a locally-built image or a remote registry image.
+#
+# Example caller:
+#   jobs:
+#     security:
+#       uses: nandohdc/gh-pipelines/.github/workflows/security-scan.yml@v1
+#       with:
+#         image-ref: my-app:ci
+#         build-image: true
+# =============================================================================
+
+name: security-scan
+
+on:
+  workflow_call:
+    inputs:
+      image-ref:
+        description: "Image reference to scan (e.g. my-app:ci or ghcr.io/nandohdc/my-app:latest)."
+        type: string
+        required: true
+      build-image:
+        description: "Build the image from Dockerfile before scanning."
+        type: boolean
+        required: false
+        default: false
+      dockerfile:
+        description: "Path to Dockerfile (used when build-image is true)."
+        type: string
+        required: false
+        default: "Dockerfile"
+      context:
+        description: "Docker build context (used when build-image is true)."
+        type: string
+        required: false
+        default: "."
+      severity:
+        description: "Comma-separated severity levels to fail on."
+        type: string
+        required: false
+        default: "HIGH,CRITICAL"
+      exit-code:
+        description: "Exit code when vulnerabilities are found (0 = warn only, 1 = fail)."
+        type: string
+        required: false
+        default: "1"
+      format:
+        description: "Output format: table, json, sarif."
+        type: string
+        required: false
+        default: "table"
+      upload-sarif:
+        description: "Upload SARIF results to GitHub Security tab."
+        type: boolean
+        required: false
+        default: false
+      ignore-unfixed:
+        description: "Ignore vulnerabilities without a fix."
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  scan:
+    name: security-scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image
+        if: inputs.build-image
+        run: docker build -t ${{ inputs.image-ref }} -f ${{ inputs.dockerfile }} ${{ inputs.context }}
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ inputs.image-ref }}
+          exit-code: ${{ inputs.exit-code }}
+          severity: ${{ inputs.severity }}
+          format: ${{ inputs.upload-sarif && 'sarif' || inputs.format }}
+          output: ${{ inputs.upload-sarif && 'trivy-results.sarif' || '' }}
+          ignore-unfixed: ${{ inputs.ignore-unfixed }}
+
+      - name: Upload Trivy SARIF to GitHub Security
+        if: inputs.upload-sarif && always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif

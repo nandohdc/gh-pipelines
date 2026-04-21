@@ -1,0 +1,149 @@
+# =============================================================================
+# helm-deploy.yml — Reusable Helm deploy workflow
+# =============================================================================
+# Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster.
+# On pull requests: dry-run only.
+# On push to main: actual deploy with --atomic.
+#
+# Example caller:
+#   jobs:
+#     deploy:
+#       uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+#       with:
+#         release-name: my-app
+#         chart: ./chart
+#         namespace: my-app
+#         values-file: values.yaml
+#       secrets:
+#         digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+# =============================================================================
+
+name: helm-deploy
+
+on:
+  workflow_call:
+    inputs:
+      release-name:
+        description: "Helm release name."
+        type: string
+        required: true
+      chart:
+        description: "Helm chart reference (repo/chart or local path)."
+        type: string
+        required: true
+      namespace:
+        description: "Kubernetes namespace."
+        type: string
+        required: true
+      values-file:
+        description: "Path to values.yaml."
+        type: string
+        required: true
+      chart-version:
+        description: "Chart version (omit for local charts)."
+        type: string
+        required: false
+        default: ""
+      cluster-id:
+        description: "DigitalOcean Kubernetes cluster UUID."
+        type: string
+        required: false
+        default: "adc9fd65-81f6-46f3-b3d1-6112298faf0a"
+      timeout:
+        description: "Helm operation timeout."
+        type: string
+        required: false
+        default: "10m"
+      extra-helm-args:
+        description: "Additional arguments passed to helm upgrade."
+        type: string
+        required: false
+        default: ""
+      post-deploy-kubectl:
+        description: |
+          Newline-separated kubectl commands to run after a successful
+          deploy (ignored on dry-run). Example:
+            kubectl apply -f platform/cert-manager/cluster-issuers.yaml
+            kubectl apply -f platform/external-secrets/cluster-secret-store.yaml
+        type: string
+        required: false
+        default: ""
+      extra-helm-repos:
+        description: |
+          Extra Helm repos (name=url, newline-separated).
+        type: string
+        required: false
+        default: ""
+    secrets:
+      digitalocean-token:
+        description: "DigitalOcean Personal Access Token."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: ${{ github.event_name == 'pull_request' && format('deploy (dry-run) / {0}', inputs.release-name) || format('deploy / {0}', inputs.release-name) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup doctl + kubeconfig
+        uses: nandohdc/gh-pipelines/actions/setup-doctl@v1
+        with:
+          digitalocean-token: ${{ secrets.digitalocean-token }}
+          cluster-id: ${{ inputs.cluster-id }}
+
+      - name: Setup Helm + repos
+        uses: nandohdc/gh-pipelines/actions/setup-helm@v1
+        with:
+          extra-repos: ${{ inputs.extra-helm-repos }}
+
+      - name: Deploy (or dry-run on PR)
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cmd=(
+            helm upgrade --install "${{ inputs.release-name }}" "${{ inputs.chart }}"
+            --namespace "${{ inputs.namespace }}"
+            --create-namespace
+            --values "${{ inputs.values-file }}"
+            --atomic
+            --timeout "${{ inputs.timeout }}"
+          )
+
+          chart_version="${{ inputs.chart-version }}"
+          if [[ -n "${chart_version}" ]]; then
+            cmd+=(--version "${chart_version}")
+          fi
+
+          extra_args="${{ inputs.extra-helm-args }}"
+          if [[ -n "${extra_args}" ]]; then
+            read -ra extra <<< "${extra_args}"
+            cmd+=("${extra[@]}")
+          fi
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            cmd+=(--dry-run --debug)
+          fi
+
+          printf 'Running:'
+          for arg in "${cmd[@]}"; do
+            printf ' %q' "${arg}"
+          done
+          printf '\n'
+          "${cmd[@]}"
+
+      - name: Post-deploy kubectl commands
+        if: github.event_name != 'pull_request' && inputs.post-deploy-kubectl != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r line; do
+            [[ -z "${line}" ]] && continue
+            echo "Running: ${line}"
+            eval "${line}"
+          done <<< "${{ inputs.post-deploy-kubectl }}"

@@ -1,0 +1,112 @@
+# =============================================================================
+# docker-build.yml — Reusable Docker build + push workflow
+# =============================================================================
+# Builds a Docker image and optionally pushes to GHCR.
+# On pull requests: build only (no push).
+# On push to default branch: build + push.
+#
+# Example caller:
+#   jobs:
+#     docker:
+#       uses: nandohdc/gh-pipelines/.github/workflows/docker-build.yml@v1
+#       with:
+#         image-name: ghcr.io/nandohdc/my-app
+# =============================================================================
+
+name: docker-build
+
+on:
+  workflow_call:
+    inputs:
+      image-name:
+        description: "Full image name including registry (e.g. ghcr.io/nandohdc/my-app)."
+        type: string
+        required: true
+      context:
+        description: "Docker build context path."
+        type: string
+        required: false
+        default: "."
+      dockerfile:
+        description: "Path to Dockerfile relative to the repository root."
+        type: string
+        required: false
+        default: "Dockerfile"
+      push:
+        description: "Push image to registry. Set false for build-only validation."
+        type: boolean
+        required: false
+        default: true
+      platforms:
+        description: "Comma-separated target platforms (e.g. linux/amd64,linux/arm64)."
+        type: string
+        required: false
+        default: "linux/amd64"
+      build-args:
+        description: "Newline-separated Docker build arguments."
+        type: string
+        required: false
+        default: ""
+      extra-tags:
+        description: "Extra docker/metadata-action tag rules."
+        type: string
+        required: false
+        default: ""
+    outputs:
+      digest:
+        description: "Image digest (sha256:...)."
+        value: ${{ jobs.build.outputs.digest }}
+      tags:
+        description: "Newline-separated pushed image tags."
+        value: ${{ jobs.build.outputs.tags }}
+      metadata:
+        description: "JSON build result metadata."
+        value: ${{ jobs.build.outputs.metadata }}
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+jobs:
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+      tags: ${{ steps.meta.outputs.tags }}
+      metadata: ${{ steps.build.outputs.metadata }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: nandohdc/gh-pipelines/actions/docker-meta@v1
+        with:
+          image-name: ${{ inputs.image-name }}
+          extra-tags: ${{ inputs.extra-tags }}
+
+      - name: Build and push
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: ${{ inputs.push && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ inputs.build-args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

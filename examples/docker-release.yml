@@ -1,0 +1,35 @@
+# =============================================================================
+# Example: Docker release caller workflow
+# =============================================================================
+# Copy this file to your service repository at .github/workflows/release.yml
+# and adjust the inputs to match your project.
+# =============================================================================
+
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  # Run full CI before releasing
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
+    with:
+      go-version: "1.26.2"
+      run-integration: true
+
+  # Build and push release image with supply-chain security
+  release:
+    needs: ci
+    uses: nandohdc/gh-pipelines/.github/workflows/docker-release.yml@v1
+    with:
+      image-name: ghcr.io/${{ github.repository }}
+      attach-sbom-to-release: true
+    permissions:
+      actions: read
+      contents: write
+      packages: write
+      id-token: write
+      attestations: write

@@ -1,0 +1,267 @@
+# =============================================================================
+# ci-go.yml — Reusable Go CI pipeline
+# =============================================================================
+# Runs lint, unit tests, vulnerability checks, and optional integration tests
+# for Go projects. Designed to be called from any Go service repository.
+#
+# Example caller:
+#   jobs:
+#     ci:
+#       uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
+#       with:
+#         go-version: "1.26.2"
+# =============================================================================
+
+name: ci-go
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to install."
+        type: string
+        required: false
+        default: "1.26.2"
+      golangci-lint-version:
+        description: "golangci-lint version."
+        type: string
+        required: false
+        default: "v1.64.8"
+      coverage-min:
+        description: "Minimum unit-test coverage percentage."
+        type: string
+        required: false
+        default: "65.0"
+      coverage-packages:
+        description: "Space-separated package list for coverage. Empty = all."
+        type: string
+        required: false
+        default: ""
+      run-integration:
+        description: "Run integration tests (requires Testcontainers / Docker)."
+        type: boolean
+        required: false
+        default: false
+      integration-tags:
+        description: "Build tags for integration tests."
+        type: string
+        required: false
+        default: "integration"
+      integration-packages:
+        description: "Package pattern for integration tests."
+        type: string
+        required: false
+        default: "./internal/..."
+      run-contract:
+        description: "Run contract checks (make contract)."
+        type: boolean
+        required: false
+        default: false
+      run-import-direction:
+        description: "Run import direction checks (scripts/check-import-direction.sh)."
+        type: boolean
+        required: false
+        default: false
+      run-k8s-validate:
+        description: "Validate Kubernetes manifests with kubectl dry-run."
+        type: boolean
+        required: false
+        default: false
+      k8s-manifests-dir:
+        description: "Path to Kubernetes manifest directory."
+        type: string
+        required: false
+        default: "deploy/kubernetes"
+      run-prometheus-validate:
+        description: "Validate Prometheus rule files."
+        type: boolean
+        required: false
+        default: false
+      prometheus-rules-dir:
+        description: "Path to Prometheus rules directory."
+        type: string
+        required: false
+        default: "deploy/prometheus"
+
+permissions:
+  contents: read
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Lint — formatting, vet, golangci-lint, optional import checks
+  # ---------------------------------------------------------------------------
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -f ./scripts/check-gofmt.sh ]; then
+            ./scripts/check-gofmt.sh
+          else
+            unformatted=$(gofmt -l .)
+            if [ -n "${unformatted}" ]; then
+              echo "Files not formatted:"
+              echo "${unformatted}"
+              exit 1
+            fi
+          fi
+
+      - name: go vet
+        run: go vet ./...
+
+      - name: golangci-lint
+        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@${{ inputs.golangci-lint-version }} run
+
+      - name: Import direction checks
+        if: inputs.run-import-direction
+        run: ./scripts/check-import-direction.sh
+
+  # ---------------------------------------------------------------------------
+  # Test — unit tests, coverage, optional contracts
+  # ---------------------------------------------------------------------------
+  test:
+    name: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Unit tests (race detector)
+        run: go test -race ./...
+
+      - name: Coverage threshold
+        shell: bash
+        env:
+          COVERAGE_MIN: ${{ inputs.coverage-min }}
+          COVERAGE_PKGS: ${{ inputs.coverage-packages }}
+        run: |
+          set -euo pipefail
+
+          pkgs="${COVERAGE_PKGS:-./...}"
+          go test -coverprofile=coverage.out ${pkgs}
+
+          coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
+          echo "Coverage: ${coverage}%  Threshold: ${COVERAGE_MIN}%"
+
+          if awk -v c="${coverage}" -v t="${COVERAGE_MIN}" 'BEGIN {exit !(c+0 >= t+0)}'; then
+            go tool cover -func=coverage.out | grep total
+          else
+            echo "::error::Coverage ${coverage}% is below threshold ${COVERAGE_MIN}%"
+            exit 1
+          fi
+
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.out
+
+      - name: Contract checks
+        if: inputs.run-contract
+        run: make contract
+
+  # ---------------------------------------------------------------------------
+  # Integration — optional, requires Docker (Testcontainers)
+  # ---------------------------------------------------------------------------
+  integration:
+    name: integration
+    if: inputs.run-integration
+    runs-on: ubuntu-latest
+    env:
+      TESTCONTAINERS_RYUK_DISABLED: "true"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: Integration tests
+        run: |
+          go test -coverprofile=integration-coverage.out \
+            -tags=${{ inputs.integration-tags }} \
+            ${{ inputs.integration-packages }}
+
+      - name: Upload integration coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: integration-coverage
+          path: integration-coverage.out
+
+  # ---------------------------------------------------------------------------
+  # Vulnerability scan
+  # ---------------------------------------------------------------------------
+  vuln:
+    name: vuln
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        with:
+          go-version: ${{ inputs.go-version }}
+
+      - name: govulncheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@latest
+          PACKAGES=$(go list ./... | grep -v '/internal/testutil$')
+          govulncheck ${PACKAGES}
+
+  # ---------------------------------------------------------------------------
+  # Kubernetes & Prometheus manifest validation (optional)
+  # ---------------------------------------------------------------------------
+  validate-manifests:
+    name: validate-manifests
+    if: inputs.run-k8s-validate || inputs.run-prometheus-validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        if: inputs.run-k8s-validate
+        uses: azure/setup-kubectl@v4
+
+      - name: Create kind cluster
+        if: inputs.run-k8s-validate
+        uses: helm/kind-action@v1
+
+      - name: Validate Kubernetes manifests
+        if: inputs.run-k8s-validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          for f in ${{ inputs.k8s-manifests-dir }}/*.yaml; do
+            [[ "${f}" == *.example ]] && continue
+            echo "Validating: ${f}"
+            kubectl apply --dry-run=client -f "${f}"
+          done
+
+      - name: Validate Prometheus rules
+        if: inputs.run-prometheus-validate
+        run: |
+          docker run --rm --entrypoint promtool \
+            -v "$PWD:/work" -w /work prom/prometheus:v2.53.0 \
+            check rules ${{ inputs.prometheus-rules-dir }}/*.yaml

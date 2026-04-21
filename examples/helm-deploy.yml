@@ -1,0 +1,35 @@
+# =============================================================================
+# Example: Helm deploy caller workflow
+# =============================================================================
+# Copy this file to your platform/infra repository at
+# .github/workflows/deploy.yml and adjust the inputs.
+#
+# This example shows deploying a single Helm release. For multi-release
+# matrix deploys (like doks-platform), use a detect-releases job that
+# calls this workflow once per release.
+# =============================================================================
+
+name: deploy
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "apps/my-app/**"
+  pull_request:
+    paths:
+      - "apps/my-app/**"
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+    with:
+      release-name: my-app
+      chart: ./apps/my-app/chart
+      namespace: my-app
+      values-file: apps/my-app/values.yaml
+      cluster-id: "adc9fd65-81f6-46f3-b3d1-6112298faf0a"
+    secrets:
+      digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}

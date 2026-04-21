@@ -1,0 +1,51 @@
+name: "Setup Helm"
+description: "Install Helm, add standard chart repositories, and update the repo index."
+
+inputs:
+  helm-version:
+    description: "Helm version to install."
+    required: false
+    default: "latest"
+  extra-repos:
+    description: |
+      Newline-separated list of additional Helm repos to add.
+      Format: <name>=<url>
+      Example:
+        bitnami=https://charts.bitnami.com/bitnami
+        grafana=https://grafana.github.io/helm-charts
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Helm
+      uses: azure/setup-helm@v4
+      with:
+        version: ${{ inputs.helm-version }}
+
+    - name: Add standard chart repositories
+      shell: bash
+      run: |
+        set -euo pipefail
+        helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx --force-update
+        helm repo add jetstack https://charts.jetstack.io --force-update
+        helm repo add external-secrets https://charts.external-secrets.io --force-update
+        helm repo add sonarqube https://SonarSource.github.io/helm-chart-sonarqube --force-update
+
+    - name: Add extra repositories
+      if: inputs.extra-repos != ''
+      shell: bash
+      run: |
+        set -euo pipefail
+        while IFS= read -r entry; do
+          [[ -z "${entry}" ]] && continue
+          name="${entry%%=*}"
+          url="${entry#*=}"
+          echo "Adding repo: ${name} -> ${url}"
+          helm repo add "${name}" "${url}" --force-update
+        done <<< "${{ inputs.extra-repos }}"
+
+    - name: Update repository index
+      shell: bash
+      run: helm repo update

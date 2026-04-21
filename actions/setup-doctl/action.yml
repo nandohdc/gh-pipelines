@@ -1,0 +1,22 @@
+name: "Setup doctl"
+description: "Install doctl CLI and load a DigitalOcean Kubernetes cluster kubeconfig."
+
+inputs:
+  digitalocean-token:
+    description: "DigitalOcean Personal Access Token."
+    required: true
+  cluster-id:
+    description: "DigitalOcean Kubernetes cluster UUID."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install doctl
+      uses: digitalocean/action-doctl@v2
+      with:
+        token: ${{ inputs.digitalocean-token }}
+
+    - name: Load kubeconfig
+      shell: bash
+      run: doctl kubernetes cluster kubeconfig save "${{ inputs.cluster-id }}"

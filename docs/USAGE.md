@@ -1,0 +1,263 @@
+# Usage Guide
+
+Complete reference for every reusable workflow and composite action in this repository.
+
+---
+
+## Reusable Workflows
+
+### ci-go.yml — Go CI Pipeline
+
+Full CI pipeline for Go services including linting, testing, vulnerability scanning, and optional Kubernetes/Prometheus manifest validation.
+
+**Trigger:** `workflow_call`
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `go-version` | string | no | `1.26.2` | Go version to install |
+| `golangci-lint-version` | string | no | `v1.64.8` | golangci-lint version |
+| `coverage-min` | string | no | `65.0` | Minimum coverage percentage |
+| `coverage-packages` | string | no | `""` | Space-separated packages for coverage (empty = all) |
+| `run-integration` | boolean | no | `false` | Run integration tests |
+| `integration-tags` | string | no | `integration` | Build tags for integration tests |
+| `integration-packages` | string | no | `./internal/...` | Package pattern for integration tests |
+| `run-contract` | boolean | no | `false` | Run contract checks (`make contract`) |
+| `run-import-direction` | boolean | no | `false` | Run import direction checks |
+| `run-k8s-validate` | boolean | no | `false` | Validate Kubernetes manifests |
+| `k8s-manifests-dir` | string | no | `deploy/kubernetes` | Path to K8s manifests |
+| `run-prometheus-validate` | boolean | no | `false` | Validate Prometheus rule files |
+| `prometheus-rules-dir` | string | no | `deploy/prometheus` | Path to Prometheus rules |
+
+#### Jobs
+
+1. **lint** — `gofmt` check, `go vet`, `golangci-lint`, optional import direction
+2. **test** — unit tests with race detector, coverage threshold, optional contract checks
+3. **integration** — integration tests with Testcontainers (conditional)
+4. **vuln** — `govulncheck` scan
+5. **validate-manifests** — K8s dry-run + Prometheus promtool (conditional)
+
+#### Example
+
+```yaml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
+    with:
+      go-version: "1.26.2"
+      coverage-min: "65.0"
+      run-integration: true
+      run-contract: true
+      run-import-direction: true
+      run-k8s-validate: true
+      run-prometheus-validate: true
+```
+
+---
+
+### docker-build.yml — Docker Build + Push
+
+Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch.
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `image-name` | string | **yes** | — | Full image name (e.g. `ghcr.io/nandohdc/my-app`) |
+| `context` | string | no | `.` | Docker build context |
+| `dockerfile` | string | no | `Dockerfile` | Dockerfile path |
+| `push` | boolean | no | `true` | Push to registry |
+| `platforms` | string | no | `linux/amd64` | Target platforms |
+| `build-args` | string | no | `""` | Build arguments (newline-separated) |
+| `extra-tags` | string | no | `""` | Extra metadata-action tag rules |
+
+#### Outputs
+
+| Output | Description |
+| --- | --- |
+| `digest` | Image digest (`sha256:...`) |
+| `tags` | Pushed image tags |
+| `metadata` | JSON build result metadata |
+
+#### Example
+
+```yaml
+name: docker
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    uses: nandohdc/gh-pipelines/.github/workflows/docker-build.yml@v1
+    with:
+      image-name: ghcr.io/nandohdc/my-app
+```
+
+---
+
+### docker-release.yml — Supply-Chain Security Release
+
+Builds a release image on tag push with full supply-chain security: SBOM generation (SPDX + CycloneDX), cosign keyless signing, and SLSA provenance attestation.
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `image-name` | string | **yes** | — | Full image name |
+| `context` | string | no | `.` | Build context |
+| `dockerfile` | string | no | `Dockerfile` | Dockerfile path |
+| `platforms` | string | no | `linux/amd64` | Target platforms |
+| `build-args` | string | no | `""` | Build arguments |
+| `attach-sbom-to-release` | boolean | no | `true` | Attach SBOMs to GitHub Release |
+
+#### Outputs
+
+| Output | Description |
+| --- | --- |
+| `digest` | Image digest |
+
+#### Example
+
+```yaml
+name: release
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  release:
+    uses: nandohdc/gh-pipelines/.github/workflows/docker-release.yml@v1
+    with:
+      image-name: ghcr.io/${{ github.repository }}
+```
+
+---
+
+### helm-deploy.yml — Helm Deploy
+
+Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Performs dry-run on pull requests, actual deployment on push to main.
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `release-name` | string | **yes** | — | Helm release name |
+| `chart` | string | **yes** | — | Chart reference (repo or local path) |
+| `namespace` | string | **yes** | — | Kubernetes namespace |
+| `values-file` | string | **yes** | — | Path to values.yaml |
+| `chart-version` | string | no | `""` | Chart version (omit for local charts) |
+| `cluster-id` | string | no | `adc9fd65-...` | DO cluster UUID |
+| `timeout` | string | no | `10m` | Helm timeout |
+| `extra-helm-args` | string | no | `""` | Additional helm arguments |
+| `post-deploy-kubectl` | string | no | `""` | Post-deploy kubectl commands |
+| `extra-helm-repos` | string | no | `""` | Extra Helm repos (`name=url`) |
+
+#### Secrets
+
+| Secret | Required | Description |
+| --- | --- | --- |
+| `digitalocean-token` | **yes** | DigitalOcean PAT |
+
+#### Example
+
+```yaml
+name: deploy
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  deploy:
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+    with:
+      release-name: my-app
+      chart: ./chart
+      namespace: my-app
+      values-file: values.yaml
+    secrets:
+      digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+```
+
+---
+
+### security-scan.yml — Trivy Container Scan
+
+Scans a Docker image for known CVEs with configurable severity threshold.
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `image-ref` | string | **yes** | — | Image to scan |
+| `build-image` | boolean | no | `false` | Build from Dockerfile first |
+| `dockerfile` | string | no | `Dockerfile` | Dockerfile path (if building) |
+| `context` | string | no | `.` | Build context (if building) |
+| `severity` | string | no | `HIGH,CRITICAL` | Severity filter |
+| `exit-code` | string | no | `1` | Exit code on findings |
+| `format` | string | no | `table` | Output format |
+| `upload-sarif` | boolean | no | `false` | Upload to GitHub Security tab |
+| `ignore-unfixed` | boolean | no | `false` | Ignore unfixed CVEs |
+
+#### Example
+
+```yaml
+name: security
+on: [push, pull_request]
+
+jobs:
+  scan:
+    uses: nandohdc/gh-pipelines/.github/workflows/security-scan.yml@v1
+    with:
+      image-ref: my-app:ci
+      build-image: true
+      upload-sarif: true
+```
+
+---
+
+## Composite Actions
+
+### actions/setup-go
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `go-version` | no | `1.26.2` | Go version |
+| `cache` | no | `true` | Enable module cache |
+
+### actions/setup-helm
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `helm-version` | no | `latest` | Helm version |
+| `extra-repos` | no | `""` | Extra repos (`name=url`, newline-separated) |
+
+Pre-configured repos: `ingress-nginx`, `jetstack`, `external-secrets`, `sonarqube`.
+
+### actions/setup-doctl
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `digitalocean-token` | **yes** | — | DO PAT |
+| `cluster-id` | **yes** | — | Cluster UUID |
+
+### actions/docker-meta
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `image-name` | **yes** | — | Full image name |
+| `extra-tags` | no | `""` | Additional tag rules |
+
+Default tags: `sha-<short>`, `latest` (on default branch), `ref:tag`.
+
+| Output | Description |
+| --- | --- |
+| `tags` | Generated tags |
+| `labels` | OCI labels |
+| `version` | Resolved version |

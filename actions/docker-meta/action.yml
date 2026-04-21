@@ -1,0 +1,38 @@
+name: "Docker Metadata"
+description: "Generate standardised Docker image tags and OCI labels."
+
+inputs:
+  image-name:
+    description: "Full image name including registry (e.g. ghcr.io/nandohdc/my-app)."
+    required: true
+  extra-tags:
+    description: |
+      Additional tag rules appended to the default set.
+      Uses docker/metadata-action tag syntax.
+    required: false
+    default: ""
+
+outputs:
+  tags:
+    description: "Newline-separated image tags."
+    value: ${{ steps.meta.outputs.tags }}
+  labels:
+    description: "Newline-separated OCI labels."
+    value: ${{ steps.meta.outputs.labels }}
+  version:
+    description: "Resolved version string."
+    value: ${{ steps.meta.outputs.version }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Extract image metadata
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ inputs.image-name }}
+        tags: |
+          type=sha,prefix=sha-,format=short
+          type=raw,value=latest,enable={{is_default_branch}}
+          type=ref,event=tag
+          ${{ inputs.extra-tags }}
