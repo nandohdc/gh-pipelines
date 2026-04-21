@@ -246,6 +246,7 @@ Runs SonarQube analysis and waits for quality gate status. The workflow always e
 1. Create repository secrets `SONAR_TOKEN` and `SONAR_HOST_URL`.
 2. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
 3. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
+4. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
 
 #### Example
 
@@ -255,6 +256,9 @@ on: [push, pull_request]
 
 jobs:
   sonar:
+    permissions:
+      contents: read
+      pull-requests: read
     uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
     with:
       working-directory: "."

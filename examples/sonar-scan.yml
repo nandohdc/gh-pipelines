@@ -13,6 +13,9 @@ on:
 
 jobs:
   sonar:
+    permissions:
+      contents: read
+      pull-requests: read
     uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
     with:
       working-directory: "."
