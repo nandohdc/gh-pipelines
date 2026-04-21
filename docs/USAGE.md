@@ -108,6 +108,58 @@ jobs:
 
 ---
 
+### ci-python.yml — Python CI Pipeline
+
+Reusable CI workflow for Python services with ruff linting, pytest coverage threshold gating, and optional dependency audit.
+
+**Trigger:** `workflow_call`
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `python-version` | string | no | `3.12` | Python version to install |
+| `dependency-file` | string | no | `requirements.txt` | Primary dependency file (supports detection of `requirements.txt`, `pyproject.toml`, `poetry.lock`) |
+| `lint-paths` | string | no | `.` | Space-separated paths passed to ruff |
+| `test-paths` | string | no | `tests/` | Space-separated paths passed to pytest |
+| `coverage-min` | number | no | `0` | Minimum pytest coverage percentage |
+| `run-audit` | boolean | no | `true` | Run `pip-audit` dependency scan job |
+
+#### Jobs
+
+1. **lint** — install dependencies + run `ruff check` and `ruff format --check`
+2. **test** — install dependencies + run `pytest` with `--cov-fail-under`
+3. **audit** — install dependencies + run `pip-audit` (conditional)
+
+Coverage gate behavior:
+- `coverage-min` is passed directly to `pytest --cov-fail-under=<value>`.
+- `0` keeps the coverage gate effectively disabled while still collecting coverage output.
+
+Dependency file behavior:
+- Uses `dependency-file` when it exists.
+- Falls back to `requirements.txt`, then `poetry.lock`, then `pyproject.toml`.
+- `pyproject.toml` / `poetry.lock` paths install project dependencies via `pip install .`.
+
+#### Example
+
+```yaml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-python.yml@v1
+    with:
+      python-version: "3.12"
+      dependency-file: "requirements.txt"
+      lint-paths: "."
+      test-paths: "tests/"
+      coverage-min: 80
+      run-audit: true
+```
+
+---
+
 ### docker-build.yml — Docker Build + Push
 
 Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch.
@@ -336,6 +388,14 @@ jobs:
 | `node-version` | no | `20` | Node.js version |
 | `package-manager` | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
 | `cache` | no | `true` | Enable dependency cache for selected manager |
+
+### actions/setup-python
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `python-version` | no | `3.12` | Python version |
+| `dependency-file` | no | `requirements.txt` | Primary dependency file used for pip cache detection |
+| `cache` | no | `true` | Enable pip cache |
 
 ### actions/setup-helm
 
