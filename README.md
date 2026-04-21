@@ -15,6 +15,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
 | **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
+| **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with quality gate enforcement |
 
 ## Available Composite Actions
 

@@ -1,0 +1,23 @@
+# =============================================================================
+# Example: SonarQube scan caller workflow
+# =============================================================================
+# Copy this file to your repository at .github/workflows/sonar.yml.
+# Requires repository secrets SONAR_TOKEN and SONAR_HOST_URL.
+# =============================================================================
+
+name: sonar
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  sonar:
+    uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
+    with:
+      working-directory: "."
+      quality-gate-timeout-minutes: 5
+      extra-scan-args: ""
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

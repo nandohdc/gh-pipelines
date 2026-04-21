@@ -222,6 +222,51 @@ jobs:
 
 ---
 
+### sonar-scan.yml — SonarQube Scan + Quality Gate
+
+Runs SonarQube analysis and waits for quality gate status. The workflow always executes both scan and quality gate steps; a failed gate fails the job.
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
+| `quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
+| `extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
+
+#### Secrets
+
+| Secret | Required | Description |
+| --- | --- | --- |
+| `SONAR_TOKEN` | **yes** | SonarQube token |
+| `SONAR_HOST_URL` | **yes** | SonarQube server URL |
+
+#### Consumer Prerequisites
+
+1. Create repository secrets `SONAR_TOKEN` and `SONAR_HOST_URL`.
+2. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
+3. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
+
+#### Example
+
+```yaml
+name: sonar
+on: [push, pull_request]
+
+jobs:
+  sonar:
+    uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
+    with:
+      working-directory: "."
+      quality-gate-timeout-minutes: 5
+      extra-scan-args: ""
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
+```
+
+---
+
 ## Composite Actions
 
 ### actions/setup-go
