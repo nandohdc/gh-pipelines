@@ -37,13 +37,6 @@ on:
         type: string
         required: false
         default: ""
-    secrets:
-      sonar_token:
-        description: "SonarQube token for authentication."
-        required: true
-      sonar_host_url:
-        description: "SonarQube server URL."
-        required: true
 
 permissions:
   contents: read
@@ -66,7 +59,3 @@ jobs:
           echo "working-directory=${{ inputs.working-directory }}"
           echo "quality-gate-timeout-minutes=${{ inputs.quality-gate-timeout-minutes }}"
           echo "extra-scan-args=${{ inputs.extra-scan-args }}"
-          echo "sonar token and host URL provided"
-        env:
-          SONAR_TOKEN: ${{ secrets.sonar_token }}
-          SONAR_HOST_URL: ${{ secrets.sonar_host_url }}

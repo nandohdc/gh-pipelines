@@ -13,6 +13,3 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       extra-scan-args: ""
-    secrets:
-      sonar_token: ${{ secrets.SONAR_TOKEN }}
-      sonar_host_url: ${{ secrets.SONAR_HOST_URL }}
