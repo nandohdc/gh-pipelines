@@ -29,9 +29,9 @@ on:
         default: "."
       quality-gate-timeout-minutes:
         description: "Maximum time in minutes to wait for quality gate status."
-        type: number
+        type: string
         required: false
-        default: 5
+        default: "5"
       extra-scan-args:
         description: "Extra arguments passed to SonarQube scanner."
         type: string
