@@ -1,61 +1,11 @@
-# =============================================================================
-# sonar-scan.yml — Reusable SonarQube scan workflow
-# =============================================================================
-# Runs SonarQube analysis and enforces quality gate checks.
-# The scan step always runs before quality gate; a red gate fails the job.
-#
-# Example caller:
-#   jobs:
-#     sonar:
-#       uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1
-#       with:
-#         working-directory: "."
-#         quality-gate-timeout-minutes: 5
-#         extra-scan-args: ""
-#       secrets:
-#         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-#         SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-# =============================================================================
-
 name: sonar-scan
 
 on:
   workflow_call:
-    inputs:
-      working-directory:
-        description: "Directory containing source code and sonar-project.properties."
-        type: string
-        required: false
-        default: "."
-      quality-gate-timeout-minutes:
-        description: "Maximum time in minutes to wait for quality gate status."
-        type: string
-        required: false
-        default: "5"
-      extra-scan-args:
-        description: "Extra arguments passed to SonarQube scanner."
-        type: string
-        required: false
-        default: ""
-
-permissions:
-  contents: read
-  pull-requests: read
 
 jobs:
   scan:
-    name: sonar-scan
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Debug reusable workflow execution
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "working-directory=${{ inputs.working-directory }}"
-          echo "quality-gate-timeout-minutes=${{ inputs.quality-gate-timeout-minutes }}"
-          echo "extra-scan-args=${{ inputs.extra-scan-args }}"
+      - name: Echo
+        run: echo "hello from sonar-scan reusable workflow"

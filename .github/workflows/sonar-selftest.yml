@@ -9,7 +9,3 @@ on:
 jobs:
   sonar:
     uses: ./.github/workflows/sonar-scan.yml
-    with:
-      working-directory: "."
-      quality-gate-timeout-minutes: 5
-      extra-scan-args: ""
