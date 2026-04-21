@@ -2,6 +2,9 @@ name: sonar-selftest
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - phase-2-branch
 
 jobs:
   sonar:
