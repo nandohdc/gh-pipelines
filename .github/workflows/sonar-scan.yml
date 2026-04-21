@@ -2,6 +2,22 @@ name: sonar-scan
 
 on:
   workflow_call:
+    inputs:
+      working-directory:
+        description: "Directory containing source code and sonar-project.properties."
+        type: string
+        required: false
+        default: "."
+      quality-gate-timeout-minutes:
+        description: "Maximum time in minutes to wait for quality gate status."
+        type: string
+        required: false
+        default: "5"
+      extra-scan-args:
+        description: "Extra arguments passed to SonarQube scanner."
+        type: string
+        required: false
+        default: ""
 
 jobs:
   scan:
