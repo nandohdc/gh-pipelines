@@ -39,6 +39,14 @@ These standards are mandatory for Codex changes in this repository.
 - Keep `.github/dependabot.yml` aligned with repo structure.
 - Ensure a `github-actions` update block exists for `/` and each composite action directory under `actions/`.
 
+## Release workflow standards
+
+- Keep `.github/workflows/release.yml` internal (do not convert it to `workflow_call`).
+- Preserve release label contract: `release:patch`, `release:minor`, and `release:major`.
+- Preserve successful no-op behavior when no release label is present.
+- Keep release workflow permissions minimal and scoped to required release operations.
+- Continue creating immutable `vX.Y.Z` tags and moving `v1` only for backward-compatible changes.
+
 ## Documentation standards
 
 - If workflow inputs/outputs change, update in the same PR:

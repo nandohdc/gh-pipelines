@@ -3,7 +3,7 @@
 ## Project Structure & Module Organization
 This repository is a shared CI/CD library, not an application runtime.
 
-- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`).
+- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`, `release.yml`).
 - `actions/<name>/action.yml`: composite actions used by workflows.
 - `.github/dependabot.yml`: GitHub Actions dependency update policy for workflows and composite actions.
 - `examples/*.yml`: caller workflow templates for consumer repositories.
@@ -22,6 +22,7 @@ There is no full local runtime harness for GitHub-hosted execution semantics. Fo
 
 - Use the internal self-test workflow (`.github/workflows/test-callers.yml`) on PRs to `main` / pushes to `main`.
 - For consumer-level validation, point a downstream repo to your branch ref:
+- For release automation changes (`.github/workflows/release.yml`), validate both labeled and unlabeled PR paths in a non-production repository before promoting tags.
 
 ```yaml
 uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch
@@ -44,6 +45,7 @@ Release tags are the delivery mechanism:
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
 - If you changed `ci-go.yml`, `ci-node.yml`, or `ci-python.yml`, ensure matching fixture coverage under `tests/fixtures/`.
+- If you changed `release.yml`, verify `release:patch|release:minor|release:major` label handling and the no-label skip path.
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
