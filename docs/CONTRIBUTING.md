@@ -75,13 +75,27 @@ We use **semantic versioning** with a floating major tag:
 
 ### Creating a Release
 
+Primary flow (automated):
+
+1. Add exactly one label to the PR before merge:
+   - `release:patch`
+   - `release:minor`
+   - `release:major`
+2. Merge the PR into `main`.
+3. `.github/workflows/release.yml` computes the next semver from existing `v*.*.*` tags.
+4. The workflow creates and pushes the new `vX.Y.Z` tag, force-moves `v1`, and publishes a GitHub Release with generated notes.
+
+No release label means no release action (workflow exits successfully without tagging).
+
+#### Manual release (fallback)
+
 ```bash
 # Tag the commit
-git tag v1.2.0
-git push origin v1.2.0
+git tag vX.Y.Z
+git push origin vX.Y.Z
 
 # Move the floating major tag
-git tag -f v1 v1.2.0
+git tag -f v1 vX.Y.Z
 git push origin v1 --force
 ```
 

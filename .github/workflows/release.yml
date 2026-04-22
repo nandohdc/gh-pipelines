@@ -1,0 +1,158 @@
+# =============================================================================
+# release.yml — Internal automated semver release workflow
+# =============================================================================
+# Triggered when a pull request to main is closed and merged.
+#
+# Label convention:
+#   - release:patch -> bump patch (vX.Y.Z -> vX.Y.(Z+1))
+#   - release:minor -> bump minor (vX.Y.Z -> vX.(Y+1).0)
+#   - release:major -> bump major (vX.Y.Z -> v(X+1).0.0)
+#   - no release label -> no release action (workflow exits successfully)
+#
+# Auth decision:
+#   - Option (a): uses GITHUB_TOKEN and assumes tag `v1` is not protected.
+# =============================================================================
+
+name: release
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine release type from PR labels
+        id: release_type
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          release_type=""
+          labels=$(jq -r '.pull_request.labels[].name' "${GITHUB_EVENT_PATH}" || true)
+
+          if echo "${labels}" | grep -qx 'release:major'; then
+            release_type="major"
+          elif echo "${labels}" | grep -qx 'release:minor'; then
+            release_type="minor"
+          elif echo "${labels}" | grep -qx 'release:patch'; then
+            release_type="patch"
+          fi
+
+          if [ -z "${release_type}" ]; then
+            echo "No release label found; skipping release."
+            {
+              echo "should_release=false"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          echo "Detected release type: ${release_type}"
+          {
+            echo "should_release=true"
+            echo "release_type=${release_type}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout merge commit with tags
+        if: steps.release_type.outputs.should_release == 'true'
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+
+      - name: Compute next version
+        if: steps.release_type.outputs.should_release == 'true'
+        id: semver
+        shell: bash
+        env:
+          RELEASE_TYPE: ${{ steps.release_type.outputs.release_type }}
+        run: |
+          set -euo pipefail
+
+          latest_tag=$(git tag -l 'v*' | rg '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)
+          if [ -z "${latest_tag}" ]; then
+            latest_tag="v0.0.0"
+          fi
+
+          IFS='.' read -r major minor patch <<< "${latest_tag#v}"
+          case "${RELEASE_TYPE}" in
+            patch)
+              patch=$((patch + 1))
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            *)
+              echo "::error::Unsupported release type: ${RELEASE_TYPE}"
+              exit 1
+              ;;
+          esac
+
+          next_tag="v${major}.${minor}.${patch}"
+          target_sha="${{ github.event.pull_request.merge_commit_sha }}"
+          if [ -z "${target_sha}" ] || [ "${target_sha}" = "null" ]; then
+            target_sha=$(git rev-parse HEAD)
+          fi
+
+          {
+            echo "latest_tag=${latest_tag}"
+            echo "next_tag=${next_tag}"
+            echo "target_sha=${target_sha}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Create release tag and move v1
+        if: steps.release_type.outputs.should_release == 'true'
+        shell: bash
+        env:
+          NEXT_TAG: ${{ steps.semver.outputs.next_tag }}
+          TARGET_SHA: ${{ steps.semver.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${NEXT_TAG}" >/dev/null 2>&1; then
+            echo "::error::Tag ${NEXT_TAG} already exists on origin."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git tag "${NEXT_TAG}" "${TARGET_SHA}"
+          git push origin "refs/tags/${NEXT_TAG}"
+
+          git tag -f v1 "${TARGET_SHA}"
+          git push origin "refs/tags/v1" --force
+
+      - name: Create GitHub release with generated notes
+        if: steps.release_type.outputs.should_release == 'true'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT_TAG: ${{ steps.semver.outputs.next_tag }}
+          TARGET_SHA: ${{ steps.semver.outputs.target_sha }}
+        run: |
+          set -euo pipefail
+
+          if gh release view "${NEXT_TAG}" >/dev/null 2>&1; then
+            echo "Release ${NEXT_TAG} already exists; skipping creation."
+            exit 0
+          fi
+
+          gh release create "${NEXT_TAG}" \
+            --target "${TARGET_SHA}" \
+            --title "${NEXT_TAG}" \
+            --generate-notes
