@@ -29,8 +29,15 @@ These standards are mandatory for Codex changes in this repository.
 
 ## Action versioning standards
 
-- Pin internal lint/security third-party actions to commit SHA when feasible.
+- Pin third-party actions in `.github/workflows/` and `actions/*/action.yml` to full commit SHA.
+- Add a trailing semver comment for each SHA pin (`# v<semver>`).
+- Keep official GitHub-owned actions tag-pinned for readability unless explicitly scoped otherwise.
 - For external-facing reusable workflows, preserve compatibility expectations for callers pinned to `@v1`.
+
+## Dependabot standards
+
+- Keep `.github/dependabot.yml` aligned with repo structure.
+- Ensure a `github-actions` update block exists for `/` and each composite action directory under `actions/`.
 
 ## Documentation standards
 

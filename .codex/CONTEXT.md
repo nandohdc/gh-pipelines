@@ -18,7 +18,8 @@
 - GitHub issue `#3` (Phase 3: Node.js CI workflow) is closed.
 - GitHub issue `#4` (Phase 4: Python CI workflow) is closed.
 - GitHub issue `#6` (Phase 6: self-test harness for `ci-go`/`ci-node`/`ci-python`) is closed.
-- GitHub issues `#7` to `#11` are open (next roadmap phases).
+- GitHub issue `#7` (Phase 7: third-party action SHA pinning + Dependabot) is closed.
+- GitHub issues `#8` to `#11` are open (next roadmap phases).
 - Last tracker sync: `2026-04-22`.
 
 ## Implemented capabilities (current state)
@@ -37,6 +38,14 @@
   - triggers on `pull_request` to `main` and `push` to `main`
   - runs `actionlint` and `yamllint` actions pinned by SHA
   - uses least-privilege permissions (`contents: read`)
+- Dependabot for GitHub Actions updates:
+  - `.github/dependabot.yml`
+  - monitors `/` and each composite action directory in `actions/`
+  - weekly cadence, `dependencies` label, PR limit `10`
+- Third-party action pinning baseline:
+  - third-party `uses:` refs in workflows/composite actions are pinned to full commit SHA
+  - pins include trailing `# v<semver>` comments
+  - GitHub-owned actions stay tag-pinned per repo convention
 - Internal reusable-workflow self-test harness:
   - `.github/workflows/test-callers.yml`
   - triggers on `pull_request` to `main` and `push` to `main`
@@ -60,7 +69,8 @@
 - Internal-only workflows (like self-CI linting) are not exposed via `workflow_call`.
 - Workflow permissions must stay least-privilege.
 - `shell: bash` scripts must start with `set -euo pipefail`.
-- Third-party actions in internal security/lint paths should be pinned by commit SHA.
+- Third-party actions in workflows/composite actions are pinned by commit SHA with `# v<semver>` comments.
+- Official GitHub-owned actions can stay tag-pinned for readability.
 - Breaking interface changes require a new major release tag.
 
 ## Current constraints

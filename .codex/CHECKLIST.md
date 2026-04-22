@@ -14,7 +14,9 @@ Use this checklist before finishing any Codex task in this repository.
 - Confirm every `shell: bash` script uses `set -euo pipefail`.
 - Confirm reusable workflow inputs have complete interface metadata.
 - Confirm internal-only workflows are not accidentally exposed as `workflow_call`.
-- Confirm third-party lint/security actions are pinned by SHA where required.
+- Confirm third-party action refs are pinned to full SHA with trailing `# v<semver>` comments.
+- Confirm GitHub-owned action refs that should remain tag-pinned were not unintentionally converted.
+- Confirm `.github/dependabot.yml` still covers `/` and each composite action directory under `actions/`.
 
 ## Tests and checks
 

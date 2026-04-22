@@ -11,8 +11,8 @@ Current baseline:
 - Node.js reusable workflow is in `.github/workflows/ci-node.yml` (issue `#3`, Phase 3, closed on `2026-04-21`).
 - Python reusable workflow is in `.github/workflows/ci-python.yml` (issue `#4`, Phase 4, closed on `2026-04-21`).
 - Internal self-test harness is in `.github/workflows/test-callers.yml` (issue `#6`, Phase 6, closed on `2026-04-22`).
+- Third-party action pinning + Dependabot configuration landed (issue `#7`, Phase 7, closed on `2026-04-22`).
 - Active roadmap issues:
-  - `#7` Phase 7: pin third-party actions to SHAs + add Dependabot
   - `#8` Phase 8: release automation for `v1.x.y` and `v1`
   - `#9` Phase 9: Terraform reusable CI workflow
   - `#10` Phase 10: repository hygiene/docs/governance templates

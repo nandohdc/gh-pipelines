@@ -5,6 +5,7 @@ This repository is a shared CI/CD library, not an application runtime.
 
 - `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`).
 - `actions/<name>/action.yml`: composite actions used by workflows.
+- `.github/dependabot.yml`: GitHub Actions dependency update policy for workflows and composite actions.
 - `examples/*.yml`: caller workflow templates for consumer repositories.
 - `tests/fixtures/{go,node,python}`: minimal fixtures used by internal self-tests.
 - `docs/USAGE.md` and `docs/CONTRIBUTING.md`: canonical behavior and contribution rules.
@@ -28,8 +29,8 @@ uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch
 
 Release tags are the delivery mechanism:
 
-- `git tag v1.2.0 && git push origin v1.2.0`
-- `git tag -f v1 v1.2.0 && git push origin v1 --force`
+- `git tag vX.Y.Z && git push origin vX.Y.Z`
+- `git tag -f v1 vX.Y.Z && git push origin v1 --force`
 
 ## Coding Style & Naming Conventions
 - Use YAML with 2-space indentation and clear step names.
@@ -37,6 +38,8 @@ Release tags are the delivery mechanism:
 - Set workflow `permissions` to least privilege.
 - For `shell: bash` steps, start scripts with `set -euo pipefail`.
 - Prefer shared logic in `actions/` over duplicating steps across workflows.
+- Pin third-party action refs in workflows/composite actions to full commit SHA with trailing `# v<semver>` comments.
+- Keep official GitHub-owned action refs tag-pinned for readability unless a change explicitly requires otherwise.
 
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
@@ -44,9 +47,10 @@ Release tags are the delivery mechanism:
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
+- If adding a new composite action directory under `actions/`, add/update its matching block in `.github/dependabot.yml`.
 
 ## Commit & Pull Request Guidelines
-This branch currently has no local commit history, so use Conventional Commit style going forward (for example, `feat(workflows): add trivy input`).
+Use Conventional Commit style (for example, `feat(workflows): add trivy input`).
 
 PRs should include:
 - what changed and why,
