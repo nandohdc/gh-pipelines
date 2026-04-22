@@ -3,9 +3,10 @@
 ## Project Structure & Module Organization
 This repository is a shared CI/CD library, not an application runtime.
 
-- `.github/workflows/*.yml`: reusable workflows called via `workflow_call`.
+- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`).
 - `actions/<name>/action.yml`: composite actions used by workflows.
 - `examples/*.yml`: caller workflow templates for consumer repositories.
+- `tests/fixtures/{go,node,python}`: minimal fixtures used by internal self-tests.
 - `docs/USAGE.md` and `docs/CONTRIBUTING.md`: canonical behavior and contribution rules.
 
 Keep workflow/action names in kebab-case (for example, `ci-go.yml`, `setup-helm`).
@@ -13,10 +14,13 @@ Keep workflow/action names in kebab-case (for example, `ci-go.yml`, `setup-helm`
 ## Build, Test, and Development Commands
 Use `actionlint` as the primary local validation tool.
 
-- `actionlint .github/workflows/*.yml`: lint all reusable workflows.
+- `actionlint .github/workflows/*.yml`: lint all workflow files.
 - `actionlint .github/workflows/ci-go.yml`: lint one workflow while iterating.
 
-There is no local runtime test harness in this repo. Validate behavior by pointing a consumer repo to your branch ref:
+There is no full local runtime harness for GitHub-hosted execution semantics. For functional validation:
+
+- Use the internal self-test workflow (`.github/workflows/test-callers.yml`) on PRs to `main` / pushes to `main`.
+- For consumer-level validation, point a downstream repo to your branch ref:
 
 ```yaml
 uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch
@@ -36,6 +40,8 @@ Release tags are the delivery mechanism:
 
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
+- If you changed `ci-go.yml`, `ci-node.yml`, or `ci-python.yml`, ensure matching fixture coverage under `tests/fixtures/`.
+- Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
 

@@ -17,7 +17,9 @@
 - GitHub issue `#2` (Phase 2: SonarQube workflow) is closed.
 - GitHub issue `#3` (Phase 3: Node.js CI workflow) is closed.
 - GitHub issue `#4` (Phase 4: Python CI workflow) is closed.
-- Last tracker sync: `2026-04-21`.
+- GitHub issue `#6` (Phase 6: self-test harness for `ci-go`/`ci-node`/`ci-python`) is closed.
+- GitHub issues `#7` to `#11` are open (next roadmap phases).
+- Last tracker sync: `2026-04-22`.
 
 ## Implemented capabilities (current state)
 
@@ -35,6 +37,11 @@
   - triggers on `pull_request` to `main` and `push` to `main`
   - runs `actionlint` and `yamllint` actions pinned by SHA
   - uses least-privilege permissions (`contents: read`)
+- Internal reusable-workflow self-test harness:
+  - `.github/workflows/test-callers.yml`
+  - triggers on `pull_request` to `main` and `push` to `main`
+  - calls `ci-go.yml`, `ci-node.yml`, and `ci-python.yml` via relative `uses:`
+  - validates against fixtures in `tests/fixtures/{go,node,python}`
 - YAML lint config:
   - `.yamllint.yml` with line-length warnings and comments-indentation disabled
 - Composite actions:
@@ -58,5 +65,6 @@
 
 ## Current constraints
 
-- There is no local runtime harness for end-to-end workflow execution.
-- Local validation is primarily static linting (`actionlint`) and then consumer-repo execution against a branch ref.
+- There is no full local runtime harness for GitHub-hosted execution semantics.
+- Local validation is static linting (`actionlint`) plus fixture-level command checks.
+- PR-level integration now includes internal caller validation through `.github/workflows/test-callers.yml`.

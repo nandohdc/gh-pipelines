@@ -10,8 +10,13 @@ Current baseline:
 - SonarQube reusable workflow is in `.github/workflows/sonar-scan.yml` (issue `#2`, Phase 2, closed on `2026-04-21`).
 - Node.js reusable workflow is in `.github/workflows/ci-node.yml` (issue `#3`, Phase 3, closed on `2026-04-21`).
 - Python reusable workflow is in `.github/workflows/ci-python.yml` (issue `#4`, Phase 4, closed on `2026-04-21`).
+- Internal self-test harness is in `.github/workflows/test-callers.yml` (issue `#6`, Phase 6, closed on `2026-04-22`).
 - Active roadmap issues:
-  - none (phases `#1` to `#4` completed and closed)
+  - `#7` Phase 7: pin third-party actions to SHAs + add Dependabot
+  - `#8` Phase 8: release automation for `v1.x.y` and `v1`
+  - `#9` Phase 9: Terraform reusable CI workflow
+  - `#10` Phase 10: repository hygiene/docs/governance templates
+  - `#11` Phase 11: docker-build hardening (SBOM/provenance/signing)
 - Release model is semver tags plus floating major (`v1.x.y` and `v1`).
 
 Files:

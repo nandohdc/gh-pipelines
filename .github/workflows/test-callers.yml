@@ -1,0 +1,44 @@
+# =============================================================================
+# test-callers.yml — Internal reusable-workflow regression harness
+# =============================================================================
+# Calls local reusable workflows against minimal in-repo fixtures so PRs validate
+# real caller behavior before release tags are moved.
+# =============================================================================
+
+name: test-callers
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test-ci-go:
+    name: test ci-go caller
+    uses: ./.github/workflows/ci-go.yml
+    with:
+      working-directory: tests/fixtures/go
+      coverage-min: "0"
+
+  test-ci-node:
+    name: test ci-node caller
+    uses: ./.github/workflows/ci-node.yml
+    with:
+      working-directory: tests/fixtures/node
+      package-manager: npm
+      run-audit: false
+
+  test-ci-python:
+    name: test ci-python caller
+    uses: ./.github/workflows/ci-python.yml
+    with:
+      dependency-file: tests/fixtures/python/requirements.txt
+      lint-paths: tests/fixtures/python/src tests/fixtures/python/tests
+      test-paths: tests/fixtures/python/tests
+      run-audit: false

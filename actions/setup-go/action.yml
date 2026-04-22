@@ -10,6 +10,10 @@ inputs:
     description: "Enable Go module caching."
     required: false
     default: "true"
+  working-directory:
+    description: "Directory containing go.mod."
+    required: false
+    default: "."
 
 runs:
   using: "composite"
@@ -22,4 +26,11 @@ runs:
 
     - name: Download modules
       shell: bash
-      run: go mod download
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+        if [ -f go.mod ]; then
+          go mod download
+        else
+          echo "::notice::No go.mod found in '${{ inputs.working-directory }}'; skipping go mod download."
+        fi

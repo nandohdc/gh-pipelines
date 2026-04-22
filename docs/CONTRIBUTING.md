@@ -103,6 +103,22 @@ brew install actionlint
 actionlint .github/workflows/*.yml
 ```
 
+### Running Self-Tests
+
+This repository includes an internal workflow (`.github/workflows/test-callers.yml`) that calls
+`ci-go.yml`, `ci-node.yml`, and `ci-python.yml` against fixtures in `tests/fixtures/`.
+
+- `tests/fixtures/go/`: minimal Go module used by `ci-go`.
+- `tests/fixtures/node/`: minimal Node package used by `ci-node`.
+- `tests/fixtures/python/`: minimal Python package used by `ci-python`.
+
+When adding inputs or behavior to any `ci-*` workflow:
+
+1. Update the corresponding fixture so lint/test expectations still reflect real caller usage.
+2. Keep fixture dependencies minimal and deterministic (`npm ci`, pinned/locked deps where applicable).
+3. Run `actionlint .github/workflows/*.yml` locally before opening a PR.
+4. Verify the `test-callers` workflow is green on your branch PR before merge.
+
 ### Integration Testing
 
 1. Create a test branch in a consumer repository.

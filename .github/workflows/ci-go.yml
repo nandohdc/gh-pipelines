@@ -22,6 +22,11 @@ on:
         type: string
         required: false
         default: "1.26.2"
+      working-directory:
+        description: "Directory containing the Go module to lint and test."
+        type: string
+        required: false
+        default: "."
       golangci-lint-version:
         description: "golangci-lint version."
         type: string
@@ -93,6 +98,9 @@ jobs:
   lint:
     name: lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -101,6 +109,7 @@ jobs:
         uses: nandohdc/gh-pipelines/actions/setup-go@v1
         with:
           go-version: ${{ inputs.go-version }}
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Check formatting
         shell: bash
@@ -133,6 +142,9 @@ jobs:
   test:
     name: test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -141,6 +153,7 @@ jobs:
         uses: nandohdc/gh-pipelines/actions/setup-go@v1
         with:
           go-version: ${{ inputs.go-version }}
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Unit tests (race detector)
         run: go test -race ./...
@@ -171,7 +184,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: coverage
-          path: coverage.out
+          path: ${{ inputs.working-directory }}/coverage.out
 
       - name: Contract checks
         if: inputs.run-contract
@@ -184,6 +197,9 @@ jobs:
     name: integration
     if: inputs.run-integration
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     env:
       TESTCONTAINERS_RYUK_DISABLED: "true"
     steps:
@@ -194,6 +210,7 @@ jobs:
         uses: nandohdc/gh-pipelines/actions/setup-go@v1
         with:
           go-version: ${{ inputs.go-version }}
+          working-directory: ${{ inputs.working-directory }}
 
       - name: Integration tests
         run: |
@@ -205,7 +222,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: integration-coverage
-          path: integration-coverage.out
+          path: ${{ inputs.working-directory }}/integration-coverage.out
 
   # ---------------------------------------------------------------------------
   # Vulnerability scan
@@ -213,6 +230,9 @@ jobs:
   vuln:
     name: vuln
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -221,6 +241,7 @@ jobs:
         uses: nandohdc/gh-pipelines/actions/setup-go@v1
         with:
           go-version: ${{ inputs.go-version }}
+          working-directory: ${{ inputs.working-directory }}
 
       - name: govulncheck
         shell: bash
@@ -237,6 +258,9 @@ jobs:
     name: validate-manifests
     if: inputs.run-k8s-validate || inputs.run-prometheus-validate
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -261,8 +285,10 @@ jobs:
           done
 
       - name: Validate Prometheus rules
+        shell: bash
         if: inputs.run-prometheus-validate
         run: |
+          set -euo pipefail
           docker run --rm --entrypoint promtool \
             -v "$PWD:/work" -w /work prom/prometheus:v2.53.0 \
             check rules ${{ inputs.prometheus-rules-dir }}/*.yaml
