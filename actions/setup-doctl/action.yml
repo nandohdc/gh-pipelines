@@ -13,7 +13,7 @@ runs:
   using: "composite"
   steps:
     - name: Install doctl
-      uses: digitalocean/action-doctl@v2
+      uses: digitalocean/action-doctl@135ac0aa0eed4437d547c6f12c364d3006b42824 # v2.5.1
       with:
         token: ${{ inputs.digitalocean-token }}
 
