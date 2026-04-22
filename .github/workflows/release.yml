@@ -77,7 +77,15 @@ jobs:
         run: |
           set -euo pipefail
 
-          latest_tag=$(git tag -l 'v*' | rg '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1 || true)
+          latest_tag=$(
+            git ls-remote --tags --refs origin 'v*' \
+              | awk '{print $2}' \
+              | sed 's#refs/tags/##' \
+              | rg '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+              | sort -V \
+              | tail -n1 \
+              || true
+          )
           if [ -z "${latest_tag}" ]; then
             latest_tag="v0.0.0"
           fi
