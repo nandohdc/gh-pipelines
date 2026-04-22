@@ -162,7 +162,7 @@ jobs:
 
 ### docker-build.yml — Docker Build + Push
 
-Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch.
+Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch. Optional inputs can also generate SBOMs, sign by digest, and emit SLSA provenance.
 
 #### Inputs
 
@@ -175,6 +175,23 @@ Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes t
 | `platforms` | string | no | `linux/amd64` | Target platforms |
 | `build-args` | string | no | `""` | Build arguments (newline-separated) |
 | `extra-tags` | string | no | `""` | Extra metadata-action tag rules |
+| `generate-sbom` | boolean | no | `false` | Generate SPDX + CycloneDX SBOM artifacts for pushed images |
+| `generate-provenance` | boolean | no | `false` | Generate SLSA provenance attestation for pushed images |
+| `sign-image` | boolean | no | `false` | Sign pushed image digest using cosign keyless mode |
+
+#### Permissions
+
+Default caller permissions stay minimal:
+- `contents: read`
+- `packages: write`
+
+When optional hardening inputs are enabled, caller permissions must include:
+
+| Input | Additional caller permissions |
+| --- | --- |
+| `generate-sbom` | `actions: write` |
+| `sign-image` | `id-token: write` |
+| `generate-provenance` | `id-token: write`, `attestations: write` |
 
 #### Outputs
 
@@ -427,3 +444,16 @@ Default tags: `sha-<short>`, `latest` (on default branch), `ref:tag`.
 | `tags` | Generated tags |
 | `labels` | OCI labels |
 | `version` | Resolved version |
+
+### actions/supply-chain-attest
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `image-name` | **yes** | — | Full image name |
+| `image-digest` | **yes** | — | Image digest (`sha256:...`) |
+| `generate-sbom` | no | `false` | Generate SPDX + CycloneDX SBOM artifacts |
+| `generate-provenance` | no | `false` | Generate SLSA provenance attestation |
+| `sign-image` | no | `false` | Sign image by digest using cosign keyless mode |
+| `sbom-artifact-suffix` | no | `run` | Suffix appended to SBOM artifact names |
+| `sbom-spdx-output` | no | `sbom.spdx.json` | Output path for SPDX SBOM |
+| `sbom-cyclonedx-output` | no | `sbom.cyclonedx.json` | Output path for CycloneDX SBOM |
