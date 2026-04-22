@@ -1,0 +1,60 @@
+name: Bug report
+description: Report a broken workflow/action behavior with reproducible steps.
+title: "bug: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting this bug.
+        Please provide a minimal, reproducible case so maintainers can verify quickly.
+
+  - type: input
+    id: affected_component
+    attributes:
+      label: Affected workflow/action
+      description: Which reusable workflow or composite action is affected?
+      placeholder: ".github/workflows/ci-go.yml or actions/setup-go"
+    validations:
+      required: true
+
+  - type: input
+    id: pinned_version
+    attributes:
+      label: Pinned version in caller
+      description: Exact ref used by the caller repository.
+      placeholder: "@v1 or @v1.x.y"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Minimal reproduction
+      description: Include caller workflow snippet and steps to reproduce.
+      placeholder: |
+        1. Caller workflow snippet:
+           jobs:
+             ci:
+               uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
+        2. Trigger event:
+        3. Observed failure log:
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected behavior
+      description: What should happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual behavior
+      description: What happened instead?
+    validations:
+      required: true

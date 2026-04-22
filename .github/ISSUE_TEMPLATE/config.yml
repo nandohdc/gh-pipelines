@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Usage Guide
+    url: https://github.com/nandohdc/gh-pipelines/blob/main/docs/USAGE.md
+    about: Check supported workflow/action inputs and examples before opening an issue.
