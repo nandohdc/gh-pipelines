@@ -19,7 +19,7 @@ runs:
   using: "composite"
   steps:
     - name: Set up Go ${{ inputs.go-version }}
-      uses: actions/setup-go@v5
+      uses: actions/setup-go@v6
       with:
         go-version: ${{ inputs.go-version }}
         cache: ${{ inputs.cache }}
