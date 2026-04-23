@@ -20,8 +20,12 @@
 - GitHub issue `#6` (Phase 6: self-test harness for `ci-go`/`ci-node`/`ci-python`) is closed.
 - GitHub issue `#7` (Phase 7: third-party action SHA pinning + Dependabot) is closed.
 - GitHub issue `#8` (Phase 8: release automation for `v1.x.y` and `v1`) is closed.
-- GitHub issues `#9` to `#11` are open (next roadmap phases).
+- GitHub issue `#9` (Phase 9: Terraform CI workflow) is closed.
+- GitHub issue `#10` (Phase 10: repository hygiene/templates/governance docs) is closed.
+- GitHub issue `#11` (Phase 11: docker-build hardening) is open.
+- GitHub issue `#12` (Dependabot bump for `digitalocean/action-doctl`) is open.
 - Last tracker sync: `2026-04-22`.
+- Tracker state is sourced from GitHub issue status; branch contents in this workspace are the source of truth for code edits.
 
 ## Implemented capabilities (current state)
 
@@ -34,8 +38,11 @@
   - `.github/workflows/helm-deploy.yml`
   - `.github/workflows/security-scan.yml`
   - `.github/workflows/sonar-scan.yml`
-- Internal repository self-CI lint workflow:
+- Internal repository workflows:
   - `.github/workflows/lint.yml`
+  - `.github/workflows/test-callers.yml`
+  - `.github/workflows/release.yml`
+- Internal repository self-CI lint workflow:
   - triggers on `pull_request` to `main` and `push` to `main`
   - runs `actionlint` and `yamllint` actions pinned by SHA
   - uses least-privilege permissions (`contents: read`)
@@ -53,11 +60,13 @@
   - calls `ci-go.yml`, `ci-node.yml`, and `ci-python.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python}`
 - Internal release automation workflow:
-  - `.github/workflows/release.yml`
   - triggers on merged pull requests to `main`
   - derives semver bump from labels `release:patch|release:minor|release:major`
   - no-ops when no release label exists
   - creates immutable `vX.Y.Z`, force-moves `v1`, and creates GitHub release notes
+- Docker build hardening surface:
+  - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, and `sign-image` inputs (default `false`)
+  - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance logic
 - YAML lint config:
   - `.yamllint.yml` with line-length warnings and comments-indentation disabled
 - Composite actions:
@@ -67,6 +76,13 @@
   - `actions/setup-doctl`
   - `actions/setup-helm`
   - `actions/docker-meta`
+  - `actions/supply-chain-attest`
+- Repository governance/docs assets:
+  - `.github/ISSUE_TEMPLATE/{bug.yml,feature.yml,config.yml}`
+  - `.github/PULL_REQUEST_TEMPLATE.md`
+  - `.github/CODEOWNERS`
+  - `SECURITY.md`
+  - `CHANGELOG.md`
 
 ## Non-negotiable decisions
 

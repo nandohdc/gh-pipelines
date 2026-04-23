@@ -20,6 +20,7 @@ Use this checklist before finishing any Codex task in this repository.
 - Confirm `.github/dependabot.yml` still covers `/` and each composite action directory under `actions/`.
 - Confirm release permissions remain minimal (`contents: write` only where required).
 - Confirm `v1` movement policy remains aligned with backward-compatibility rules.
+- If touching docker hardening surfaces (`docker-build.yml` inputs or `actions/supply-chain-attest`), confirm both default and hardened paths are validated.
 
 ## Tests and checks
 
@@ -37,6 +38,7 @@ Use this checklist before finishing any Codex task in this repository.
   - `docs/USAGE.md`
   - relevant `examples/*.yml`
 - Keep `.codex/README.md` and `.codex/CONTEXT.md` aligned with current issue phase status.
+- Keep `AGENTS.md` aligned with `.codex/*.md` when repository standards are adjusted.
 
 ## Completion
 

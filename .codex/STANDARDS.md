@@ -54,12 +54,14 @@ These standards are mandatory for Codex changes in this repository.
   - `docs/USAGE.md`
   - `examples/*.yml` as needed
 - Keep `.codex/*.md` aligned with issue tracker phase status.
+- Keep `AGENTS.md` aligned with `.codex/*.md` when repository-level standards or validation rules change.
 
 ## Verification standards
 
 - Run `actionlint .github/workflows/*.yml` before completion.
 - If a single workflow is under active iteration, run `actionlint .github/workflows/<name>.yml`.
 - Validate functional behavior from a consumer repo by pinning `uses:` to a branch ref when behavior changes.
+- If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository.
 
 ## Release standards
 

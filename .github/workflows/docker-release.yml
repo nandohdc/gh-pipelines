@@ -123,4 +123,3 @@ jobs:
           files: |
             sbom.spdx.json
             sbom.cyclonedx.json
-

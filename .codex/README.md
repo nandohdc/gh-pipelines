@@ -6,17 +6,12 @@ Current baseline:
 
 - Reusable workflows live in `.github/workflows/` and are consumed via `uses: nandohdc/gh-pipelines/.github/workflows/<name>.yml@v1`.
 - Composite actions live in `actions/<name>/action.yml` and are consumed via `uses: nandohdc/gh-pipelines/actions/<name>@v1`.
-- Internal self-CI lint workflow is in `.github/workflows/lint.yml` (issue `#1`, Phase 1, closed on `2026-04-21`).
-- SonarQube reusable workflow is in `.github/workflows/sonar-scan.yml` (issue `#2`, Phase 2, closed on `2026-04-21`).
-- Node.js reusable workflow is in `.github/workflows/ci-node.yml` (issue `#3`, Phase 3, closed on `2026-04-21`).
-- Python reusable workflow is in `.github/workflows/ci-python.yml` (issue `#4`, Phase 4, closed on `2026-04-21`).
-- Internal self-test harness is in `.github/workflows/test-callers.yml` (issue `#6`, Phase 6, closed on `2026-04-22`).
-- Third-party action pinning + Dependabot configuration landed (issue `#7`, Phase 7, closed on `2026-04-22`).
-- Internal release automation is in `.github/workflows/release.yml` (issue `#8`, Phase 8, closed on `2026-04-22`).
-- Active roadmap issues:
-  - `#9` Phase 9: Terraform reusable CI workflow
-  - `#10` Phase 10: repository hygiene/docs/governance templates
-  - `#11` Phase 11: docker-build hardening (SBOM/provenance/signing)
+- Internal maintenance workflows are `.github/workflows/lint.yml`, `.github/workflows/test-callers.yml`, and `.github/workflows/release.yml`.
+- Docker build hardening is available via optional inputs in `.github/workflows/docker-build.yml` and shared helper logic in `actions/supply-chain-attest/action.yml`.
+- Repository governance assets are present in `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`, `SECURITY.md`, and `CHANGELOG.md`.
+- Tracker snapshot (synced `2026-04-22`):
+  - Closed phases: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`
+  - Open work: `#11` (docker-build hardening follow-up), `#12` (Dependabot update)
 - Release model is semver tags plus floating major (`v1.x.y` and `v1`).
 
 Files:
