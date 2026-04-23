@@ -14,6 +14,7 @@ Current baseline:
   - Closed phases/issues: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`, `#11`, `#33`, `#34`
   - Open phase issues: `#35`, `#36`, `#37`, `#38`
 - Release model is semver tags plus floating major (`v1.x.y` and `v1`), executed on pushes to `main` based on labels from the merged PR linked to the pushed commit.
+- `main` branch protection requires PR flow + strict required status checks; required approving reviews are set to `0` for solo-maintainer merges.
 
 Files:
 

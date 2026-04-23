@@ -23,7 +23,8 @@ There is no full local runtime harness for GitHub-hosted execution semantics. Fo
 
 - Use the internal self-test workflow (`.github/workflows/test-callers.yml`) on PRs to `main` / pushes to `main`.
 - For consumer-level validation, point a downstream repo to your branch ref.
-- `main` is protected: direct pushes are rejected; ship changes through PRs with required checks + CODEOWNERS review.
+- `main` is protected: direct pushes are rejected; ship changes through PRs with required checks.
+- PR approvals are currently optional (`required_approving_review_count=0`) to avoid blocking solo-maintainer merges while preserving CI safeguards.
 - For release automation changes (`.github/workflows/release.yml`), validate push-to-`main` behavior for:
   - commits associated with merged PRs carrying `release:patch|release:minor|release:major`,
   - commits associated with merged PRs with no release label (no-op path),
@@ -72,7 +73,7 @@ PRs should include:
 - what changed and why,
 - compatibility impact (backward-compatible vs breaking),
 - updated documentation/examples for any interface change,
-- CODEOWNERS approval and protected-check readiness for merge to `main`,
+- protected-check readiness for merge to `main` (approvals optional under current branch protection),
 - least-privilege permission review and secret-handling review.
 
 Breaking workflow/action interfaces require a new major release tag; do not move `v1` for breaking changes.

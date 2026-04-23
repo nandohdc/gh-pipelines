@@ -110,3 +110,5 @@
 - Local validation is static linting (`actionlint`) plus fixture-level command checks.
 - PR-level integration now includes internal caller validation through `.github/workflows/test-callers.yml`.
 - Release workflow behavior requires GitHub-hosted execution for full end-to-end validation.
+- Branch protection for `main` requires pull requests and strict required status checks.
+- Required approving reviews are intentionally set to `0` for solo-maintainer operation (self-approval is not possible on own PRs).
