@@ -67,6 +67,12 @@ These standards are mandatory for Codex changes in this repository.
 - If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository.
 - If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.
 
+## Branch protection standards
+
+- Keep `main` protected with pull-request flow and required status checks.
+- Keep strict status checks enabled so required checks must be green on the latest merge base.
+- For this solo-maintainer repository, keep required approvals disabled (`required_approving_review_count=0`) to avoid self-approval deadlocks.
+
 ## Release standards
 
 - Backward-compatible changes ship as new minor/patch tags and can move `v1`.
