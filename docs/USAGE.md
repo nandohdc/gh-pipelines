@@ -160,6 +160,54 @@ jobs:
 
 ---
 
+### ci-terraform.yml — Terraform CI Pipeline
+
+Reusable CI workflow for Terraform projects with formatting checks, validation, planning, and optional IaC security audit.
+
+**Trigger:** `workflow_call`
+
+Cloud credentials are caller-managed and should be configured in the consumer workflow (environment variables or OIDC).
+
+#### Inputs
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `terraform-version` | string | no | `1.9.8` | Terraform version to install |
+| `working-directory` | string | no | `.` | Directory containing Terraform configuration |
+| `var-file` | string | no | `""` | Optional var-file passed to `terraform plan` |
+| `backend-config` | string | no | `""` | Optional backend config (`key=value` or file path) passed to `terraform init` |
+| `run-audit` | boolean | no | `true` | Run IaC security audit job |
+| `audit-tool` | string | no | `tfsec` | Audit tool (`tfsec` or `checkov`) |
+| `upload-plan` | boolean | no | `true` | Upload `tfplan` artifact on pull request events |
+
+#### Jobs
+
+1. **fmt** — `terraform fmt -check -recursive`
+2. **validate** — `terraform init -backend=false` and `terraform validate`
+3. **plan** — `terraform init`, `terraform plan -out=tfplan -input=false`, optional `tfplan` artifact upload on PR events
+4. **audit** — optional `tfsec` (default) or `checkov` scan
+
+#### Example
+
+```yaml
+name: terraform-ci
+on: [push, pull_request]
+
+jobs:
+  terraform:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1
+    with:
+      terraform-version: "1.9.8"
+      working-directory: "infra"
+      var-file: "envs/dev.tfvars"
+      backend-config: "envs/dev.backend.hcl"
+      run-audit: true
+      audit-tool: "tfsec"
+      upload-plan: true
+```
+
+---
+
 ### docker-build.yml — Docker Build + Push
 
 Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch. Optional inputs can also generate SBOMs, sign by digest, and emit SLSA provenance.
@@ -413,6 +461,13 @@ jobs:
 | `python-version` | no | `3.12` | Python version |
 | `dependency-file` | no | `requirements.txt` | Primary dependency file used for pip cache detection |
 | `cache` | no | `true` | Enable pip cache |
+
+### actions/setup-terraform
+
+| Input | Required | Default | Description |
+| --- | --- | --- | --- |
+| `terraform-version` | no | `1.9.8` | Terraform version |
+| `cache` | no | `true` | Enable provider plugin cache |
 
 ### actions/setup-helm
 

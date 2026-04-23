@@ -13,6 +13,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
 | **Node CI** | `ci-node.yml` | Lint, test, coverage, and audit for Node.js services |
 | **Python CI** | `ci-python.yml` | Lint, test, coverage, and audit for Python services |
+| **Terraform CI** | `ci-terraform.yml` | Terraform fmt, validate, plan, and IaC audit |
 | **Docker Build** | `docker-build.yml` | Build + push images to GHCR* |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
 | **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
@@ -28,6 +29,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Setup Go** | `actions/setup-go` | Go toolchain + module download + cache |
 | **Setup Node** | `actions/setup-node` | Node.js toolchain + package-manager-aware cache |
 | **Setup Python** | `actions/setup-python` | Python toolchain + dependency-aware pip cache |
+| **Setup Terraform** | `actions/setup-terraform` | Terraform CLI + optional provider plugin cache |
 | **Setup Helm** | `actions/setup-helm` | Helm CLI + standard chart repos |
 | **Setup doctl** | `actions/setup-doctl` | DigitalOcean CLI + kubeconfig |
 | **Docker Meta** | `actions/docker-meta` | Standard image tags + OCI labels |

@@ -12,6 +12,13 @@ Notes:
 
 ## [Unreleased]
 
+### Added
+
+- Added reusable Terraform CI workflow (`ci-terraform.yml`) with fmt/validate/plan jobs plus optional `tfsec`/`checkov` audit.
+- Added `actions/setup-terraform` composite action with SHA-pinned Terraform setup and optional plugin cache.
+- Added Terraform caller example and minimal fixture coverage in `test-callers.yml`.
+- Added Dependabot coverage for `/actions/setup-terraform`.
+
 ### Changed
 
 - Validated no-release-label behavior in release automation (`chore(ci): validate no-label release behavior`).
