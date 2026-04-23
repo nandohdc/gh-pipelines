@@ -133,16 +133,18 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
           CONSUMER_ID: ${{ matrix.id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
 
-          if ! gh label list --limit 200 --json name --jq '.[].name' | grep -qx 'drift'; then
-            gh label create drift --color D93F0B --description "Detected integration drift against consumer canaries"
+          if ! gh label list --repo "${REPOSITORY}" --limit 200 --json name --jq '.[].name' | grep -qx 'drift'; then
+            gh label create drift --repo "${REPOSITORY}" --color D93F0B --description "Detected integration drift against consumer canaries"
           fi
 
           gh issue create \
+            --repo "${REPOSITORY}" \
             --label drift \
             --title "Integration drift: ${CONSUMER_ID} · $(date -u +%F)" \
             --body "${RUN_URL}"
