@@ -17,7 +17,6 @@ on:
 
 permissions:
   contents: read
-  issues: write
 
 jobs:
   select-consumers:
@@ -56,6 +55,9 @@ jobs:
     name: parse ${{ matrix.id }}
     needs: select-consumers
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       matrix:
