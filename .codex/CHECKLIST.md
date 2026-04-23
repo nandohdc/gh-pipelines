@@ -35,6 +35,7 @@ Use this checklist before finishing any Codex task in this repository.
 - If touching one workflow repeatedly, also run:
   - `actionlint .github/workflows/<name>.yml`
 - If touching `.github/workflows/security-self-scan.yml` or `.zizmor.yml`, run:
+  - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
   - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
 - If touching `.github/workflows/dependabot-auto-merge.yml`, validate patch/minor auto-merge and major-update comment paths in a non-production repository.
 - If touching `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage exists under `tests/fixtures/`.
