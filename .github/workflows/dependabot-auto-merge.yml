@@ -1,0 +1,67 @@
+# =============================================================================
+# dependabot-auto-merge.yml — Internal Dependabot auto-merge workflow
+# =============================================================================
+# Auto-enables merge for low-risk Dependabot updates (patch/minor) while
+# leaving major updates for maintainer review.
+#
+# Safety model:
+# - Runs on pull_request_target for access to repository token/permissions.
+# - Never checks out PR code.
+# - Relies on branch protection required checks before merge completes.
+# =============================================================================
+
+name: dependabot-auto-merge
+
+on:
+  pull_request_target:
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependabot-auto-merge-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  dependabot-auto-merge:
+    if: github.actor == 'dependabot[bot]' && github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.base.ref == 'main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Fetch Dependabot metadata
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Enable auto-merge for patch/minor updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch' || steps.metadata.outputs.update-type == 'version-update:semver-minor'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          labels=$(gh pr view "${PR_NUMBER}" --json labels --jq '.labels[].name')
+          if ! echo "${labels}" | grep -qx 'release:patch'; then
+            gh pr edit "${PR_NUMBER}" --add-label 'release:patch'
+          fi
+
+          gh pr merge "${PR_NUMBER}" --auto --squash
+
+      - name: Comment on major updates
+        if: steps.metadata.outputs.update-type == 'version-update:semver-major'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+
+          gh pr comment "${PR_NUMBER}" --body 'Major update; maintainer review required.'

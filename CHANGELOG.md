@@ -18,11 +18,13 @@ Notes:
 - Added `actions/setup-terraform` composite action with SHA-pinned Terraform setup and optional plugin cache.
 - Added Terraform caller example and minimal fixture coverage in `test-callers.yml`.
 - Added Dependabot coverage for `/actions/setup-terraform`.
+- Added internal Dependabot auto-merge workflow for patch/minor updates (`.github/workflows/dependabot-auto-merge.yml`) with maintainer-review fallback for majors.
 
 ### Changed
 
 - Validated no-release-label behavior in release automation (`chore(ci): validate no-label release behavior`).
-- Protected `main` with PR + CODEOWNERS review and required checks, enabled auto-delete head branches, and cleaned up stale merged branches.
+- Protected `main` with PR + required checks, enabled auto-delete head branches, and cleaned up stale merged branches.
+- Documented Dependabot policy in `docs/CONTRIBUTING.md`: patch/minor auto-merge on green required checks; majors require maintainer review.
 
 ## [v1.5.2] - 2026-04-22
 

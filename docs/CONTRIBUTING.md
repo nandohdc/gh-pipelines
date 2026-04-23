@@ -153,7 +153,17 @@ When adding inputs or behavior to any `ci-*` workflow:
 
 ## Branch Protection & Branch Hygiene
 
-- `main` is protected: all changes must go through a pull request and require CODEOWNERS review.
+- `main` is protected: all changes must go through a pull request and required status checks must pass.
+- Required approving reviews are currently set to `0` to avoid solo-maintainer self-approval deadlocks.
 - Required checks must be green before merge.
 - Head branches are auto-deleted on merge.
 - Maintainers should sweep leftover remote branches weekly and remove stale merged branches.
+
+## Dependabot Auto-Merge Policy
+
+- `.github/workflows/dependabot-auto-merge.yml` handles Dependabot pull requests using `pull_request_target` without checking out untrusted code.
+- Patch and minor dependency updates (`version-update:semver-patch` and `version-update:semver-minor`) automatically:
+  - add `release:patch`,
+  - enable auto-merge with squash,
+  - and merge only after required checks are green via branch protection.
+- Major dependency updates (`version-update:semver-major`) are not auto-merged; the workflow posts: `Major update; maintainer review required.`
