@@ -1,7 +1,8 @@
 # =============================================================================
 # release.yml — Internal automated semver release workflow
 # =============================================================================
-# Triggered when a pull request to main is closed and merged.
+# Triggered on push to main; release type is resolved from labels on the
+# merged PR associated with the pushed commit.
 #
 # Label convention:
 #   - release:patch -> bump patch (vX.Y.Z -> vX.Y.(Z+1))
@@ -16,28 +17,45 @@
 name: release
 
 on:
-  pull_request:
-    types:
-      - closed
+  push:
     branches:
       - main
 
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 permissions:
   contents: write
+  pull-requests: read
 
 jobs:
   release:
-    if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     steps:
-      - name: Determine release type from PR labels
+      - name: Determine release type from merged PR labels
         id: release_type
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
 
+          pr_number=$(
+            gh api "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+              --jq 'map(select(.merged_at != null and .base.ref == "main")) | .[0].number // empty' \
+              || true
+          )
+          if [ -z "${pr_number}" ]; then
+            echo "No merged PR associated with commit ${GITHUB_SHA}; skipping release."
+            {
+              echo "should_release=false"
+            } >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
           release_type=""
-          labels=$(jq -r '.pull_request.labels[].name' "${GITHUB_EVENT_PATH}" || true)
+          labels=$(gh api "/repos/${GITHUB_REPOSITORY}/issues/${pr_number}/labels" --jq '.[].name' || true)
 
           if echo "${labels}" | grep -qx 'release:major'; then
             release_type="major"
@@ -55,10 +73,11 @@ jobs:
             exit 0
           fi
 
-          echo "Detected release type: ${release_type}"
+          echo "Detected release type: ${release_type} (PR #${pr_number})"
           {
             echo "should_release=true"
             echo "release_type=${release_type}"
+            echo "pr_number=${pr_number}"
           } >> "${GITHUB_OUTPUT}"
 
       - name: Checkout merge commit with tags
@@ -66,7 +85,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          ref: ${{ github.sha }}
 
       - name: Compute next version
         if: steps.release_type.outputs.should_release == 'true'
@@ -111,10 +130,7 @@ jobs:
           esac
 
           next_tag="v${major}.${minor}.${patch}"
-          target_sha="${{ github.event.pull_request.merge_commit_sha }}"
-          if [ -z "${target_sha}" ] || [ "${target_sha}" = "null" ]; then
-            target_sha=$(git rev-parse HEAD)
-          fi
+          target_sha="${GITHUB_SHA}"
 
           {
             echo "latest_tag=${latest_tag}"
@@ -131,16 +147,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          if git ls-remote --exit-code --tags origin "refs/tags/${NEXT_TAG}" >/dev/null 2>&1; then
-            echo "::error::Tag ${NEXT_TAG} already exists on origin."
-            exit 1
-          fi
-
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          git tag "${NEXT_TAG}" "${TARGET_SHA}"
-          git push origin "refs/tags/${NEXT_TAG}"
+          existing_sha=$(
+            git ls-remote --tags --refs origin "refs/tags/${NEXT_TAG}" \
+              | awk '{print $1}' \
+              || true
+          )
+          if [ -n "${existing_sha}" ]; then
+            if [ "${existing_sha}" != "${TARGET_SHA}" ]; then
+              echo "::error::Tag ${NEXT_TAG} already exists and points to ${existing_sha}, expected ${TARGET_SHA}."
+              exit 1
+            fi
+            echo "Tag ${NEXT_TAG} already exists at target SHA; continuing."
+          else
+            git tag "${NEXT_TAG}" "${TARGET_SHA}"
+            git push origin "refs/tags/${NEXT_TAG}"
+          fi
 
           git tag -f v1 "${TARGET_SHA}"
           git push origin "refs/tags/v1" --force
