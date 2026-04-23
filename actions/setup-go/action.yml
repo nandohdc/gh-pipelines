@@ -27,10 +27,12 @@ runs:
     - name: Download modules
       shell: bash
       working-directory: ${{ inputs.working-directory }}
+      env:
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
       run: |
         set -euo pipefail
         if [ -f go.mod ]; then
           go mod download
         else
-          echo "::notice::No go.mod found in '${{ inputs.working-directory }}'; skipping go mod download."
+          echo "::notice::No go.mod found in '${WORKING_DIRECTORY}'; skipping go mod download."
         fi

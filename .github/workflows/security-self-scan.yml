@@ -1,0 +1,93 @@
+# =============================================================================
+# security-self-scan.yml — Internal workflow security scanning
+# =============================================================================
+# Runs security analysis against this repository's workflows and composite actions
+# using zizmor (with SARIF upload) and actionlint+shellcheck for inline scripts.
+# =============================================================================
+
+name: security-self-scan
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/**"
+      - "actions/**"
+  schedule:
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Run zizmor high-severity gate
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          advanced-security: false
+          min-severity: high
+          config: .zizmor.yml
+          inputs: |
+            .github/workflows/**
+            actions/**/action.yml
+
+      - name: Upload zizmor SARIF
+        if: always()
+        uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
+        with:
+          min-severity: high
+          config: .zizmor.yml
+          inputs: |
+            .github/workflows/**
+            actions/**/action.yml
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Install shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Install actionlint
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash" -o /tmp/download-actionlint.bash
+          bash /tmp/download-actionlint.bash 1.7.12 /tmp
+          echo "/tmp" >> "${GITHUB_PATH}"
+
+      - name: Lint inline bash blocks with actionlint + shellcheck
+        shell: bash
+        run: |
+          set -euo pipefail
+          actionlint -shellcheck=shellcheck .github/workflows/*.yml
+
+      - name: Lint shell scripts under actions/
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+          scripts=(actions/**/*.sh)
+          if ((${#scripts[@]} == 0)); then
+            echo "No shell scripts found under actions/."
+            exit 0
+          fi
+          shellcheck "${scripts[@]}"

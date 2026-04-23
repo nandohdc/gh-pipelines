@@ -27,8 +27,9 @@ runs:
       run: |
         set -euo pipefail
         cache_dir="${RUNNER_TEMP}/terraform-plugin-cache"
+        terraformrc="${HOME}/.terraformrc"
         mkdir -p "${cache_dir}"
-        echo "TF_PLUGIN_CACHE_DIR=${cache_dir}" >> "${GITHUB_ENV}"
+        printf 'plugin_cache_dir = "%s"\n' "${cache_dir}" > "${terraformrc}"
         echo "cache-dir=${cache_dir}" >> "${GITHUB_OUTPUT}"
 
     - name: Cache Terraform provider plugins

@@ -28,6 +28,11 @@ actionlint .github/workflows/*.yml
 
 # Lint a single workflow
 actionlint .github/workflows/ci-go.yml
+
+# Run security self-scan gate locally (zizmor high-severity threshold)
+UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python \
+  uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml \
+  .github/workflows/** actions/**/action.yml
 ```
 
 For functional validation:

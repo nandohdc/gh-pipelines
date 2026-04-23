@@ -18,6 +18,7 @@ Use `actionlint` as the primary local validation tool.
 
 - `actionlint .github/workflows/*.yml`: lint all workflow files.
 - `actionlint .github/workflows/ci-go.yml`: lint one workflow while iterating.
+- `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`: run the security self-scan gate locally.
 
 There is no full local runtime harness for GitHub-hosted execution semantics. For functional validation:
 
@@ -54,6 +55,9 @@ Release tags are the delivery mechanism:
 - If you changed `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage under `tests/fixtures/`.
 - If you changed `ci-terraform.yml` or `actions/setup-terraform`, validate Terraform fixture behavior (`fmt`, `init`, `validate`, `plan`) in `tests/fixtures/terraform/`.
 - If you changed `docker-build.yml` hardening inputs or `actions/supply-chain-attest`, verify both default-path behavior (all hardening flags false) and hardened-path behavior in a non-production repository.
+- If you changed `security-self-scan.yml` or `.zizmor.yml`, run:
+  - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
+  - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
 - If you changed `release.yml`, verify:
   - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main`,
   - no-label skip path,
