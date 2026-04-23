@@ -20,6 +20,7 @@ These standards are mandatory for Codex changes in this repository.
 - Set workflow `permissions` to least privilege.
 - Prefer shared logic in `actions/` over duplicated workflow steps.
 - Keep workflow/action filenames in kebab-case.
+- For internal workflows that create issues (`integration-smoke.yml`), keep `gh` commands explicitly scoped with `--repo "${{ github.repository }}"`.
 
 ## Script standards
 
@@ -38,6 +39,7 @@ These standards are mandatory for Codex changes in this repository.
 
 - Keep `.github/dependabot.yml` aligned with repo structure.
 - Ensure a `github-actions` update block exists for `/` and each composite action directory under `actions/`.
+- Keep `.github/workflows/dependabot-auto-merge.yml` restricted to Dependabot PRs on `main`; do not add checkout or execution of untrusted PR code.
 
 ## Release workflow standards
 
@@ -65,15 +67,22 @@ These standards are mandatory for Codex changes in this repository.
 - Run `actionlint -shellcheck=shellcheck .github/workflows/*.yml` when validating inline bash coverage.
 - If a single workflow is under active iteration, run `actionlint .github/workflows/<name>.yml`.
 - If touching `.github/workflows/security-self-scan.yml` or `.zizmor.yml`, run:
+  - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
   - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
+- If touching `.github/workflows/dependabot-auto-merge.yml`, validate Dependabot-only scoping and both update paths (patch/minor auto-merge, major update comment).
 - Validate functional behavior from a consumer repo by pinning `uses:` to a branch ref when behavior changes.
 - If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository.
 - If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.
+- If touching `.github/workflows/integration-smoke.yml`, validate:
+  - `workflow_dispatch` success path on `main`,
+  - controlled failure path opens a `drift`-labeled issue in this repository,
+  - first scheduled run after merge (`0 7 * * *`) completes green.
 
 ## Branch protection standards
 
 - Keep `main` protected with pull-request flow and required status checks.
 - Keep strict status checks enabled so required checks must be green on the latest merge base.
+- Keep required status-check contexts aligned with workflow job names (`lint`, caller matrix checks, `zizmor`, `shellcheck`).
 - For this solo-maintainer repository, keep required approvals disabled (`required_approving_review_count=0`) to avoid self-approval deadlocks.
 
 ## Release standards

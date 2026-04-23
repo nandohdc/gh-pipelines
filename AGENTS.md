@@ -3,9 +3,10 @@
 ## Project Structure & Module Organization
 This repository is a shared CI/CD library, not an application runtime.
 
-- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`, `release.yml`).
+- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`, `release.yml`, `security-self-scan.yml`, `dependabot-auto-merge.yml`, `integration-smoke.yml`).
 - `actions/<name>/action.yml`: composite actions used by workflows.
 - `.github/dependabot.yml`: GitHub Actions dependency update policy for workflows and composite actions.
+- `.zizmor.yml`: policy configuration for internal workflow security scans.
 - `.github/ISSUE_TEMPLATE/*`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`: repository governance and contribution templates.
 - `examples/*.yml`: caller workflow templates for consumer repositories.
 - `tests/fixtures/{go,node,python,terraform}`: minimal fixtures used by internal self-tests.
@@ -18,6 +19,7 @@ Use `actionlint` as the primary local validation tool.
 
 - `actionlint .github/workflows/*.yml`: lint all workflow files.
 - `actionlint .github/workflows/ci-go.yml`: lint one workflow while iterating.
+- `actionlint -shellcheck=shellcheck .github/workflows/*.yml`: lint inline bash with shellcheck integration.
 - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`: run the security self-scan gate locally.
 
 There is no full local runtime harness for GitHub-hosted execution semantics. For functional validation:
@@ -58,12 +60,17 @@ Release tags are the delivery mechanism:
 - If you changed `security-self-scan.yml` or `.zizmor.yml`, run:
   - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
   - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
+- If you changed `dependabot-auto-merge.yml`, validate Dependabot-only behavior on `pull_request_target`, patch/minor auto-merge enablement, and major-update comment path.
 - If you changed `release.yml`, verify:
   - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main`,
   - no-label skip path,
   - merge-commit fallback PR detection path,
   - release serialization and idempotent tag handling.
-- If you changed `lint.yml` or `test-callers.yml` job names, keep protected required-check contexts aligned (currently: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`).
+- If you changed `integration-smoke.yml`, verify:
+  - `workflow_dispatch` succeeds on `main` (for example `consumer=all`),
+  - controlled failing path opens a `drift`-labeled issue,
+  - first scheduled run after merge (`cron: 0 7 * * *`) is green.
+- If you changed `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep protected required-check contexts aligned (currently: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`).
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
