@@ -1,0 +1,50 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # GitHub-owned actions in this repo intentionally use readable tag pins.
+        "actions/*": ref-pin
+        "github/*": ref-pin
+        # Internal reusable actions are consumed through maintained v1 tags.
+        "nandohdc/gh-pipelines/*": ref-pin
+
+  dangerous-triggers:
+    ignore:
+      # This workflow intentionally uses pull_request_target and never checks out PR code.
+      - dependabot-auto-merge.yml
+
+  template-injection:
+    ignore:
+      # workflow_call inputs in ci-go are maintainer-controlled by trusted caller repos.
+      - ci-go.yml:133
+      - ci-go.yml:218
+      - ci-go.yml:219
+      - ci-go.yml:281
+      - ci-go.yml:294
+      # workflow_call inputs in ci-node are validated and constrained by the workflow interface.
+      - ci-node.yml:83
+      - ci-node.yml:86
+      - ci-node.yml:109
+      - ci-node.yml:120
+      - ci-node.yml:131
+      - ci-node.yml:142
+      - ci-node.yml:164
+      - ci-node.yml:167
+      - ci-node.yml:190
+      - ci-node.yml:201
+      - ci-node.yml:214
+      - ci-node.yml:225
+      - ci-node.yml:271
+      - ci-node.yml:274
+      - ci-node.yml:297
+      - ci-node.yml:308
+      - ci-node.yml:319
+      - ci-node.yml:334
+      # Helm deploy interface values are constrained by trusted pipeline callers.
+      - helm-deploy.yml:110
+      - helm-deploy.yml:111
+      - helm-deploy.yml:113
+      - helm-deploy.yml:115
+      - helm-deploy.yml:118
+      - helm-deploy.yml:123
+      - helm-deploy.yml:149

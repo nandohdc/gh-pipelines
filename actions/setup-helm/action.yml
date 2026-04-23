@@ -36,6 +36,8 @@ runs:
     - name: Add extra repositories
       if: inputs.extra-repos != ''
       shell: bash
+      env:
+        EXTRA_REPOS: ${{ inputs.extra-repos }}
       run: |
         set -euo pipefail
         while IFS= read -r entry; do
@@ -44,7 +46,7 @@ runs:
           url="${entry#*=}"
           echo "Adding repo: ${name} -> ${url}"
           helm repo add "${name}" "${url}" --force-update
-        done <<< "${{ inputs.extra-repos }}"
+        done <<< "${EXTRA_REPOS}"
 
     - name: Update repository index
       shell: bash

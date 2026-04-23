@@ -62,7 +62,10 @@ These standards are mandatory for Codex changes in this repository.
 ## Verification standards
 
 - Run `actionlint .github/workflows/*.yml` before completion.
+- Run `actionlint -shellcheck=shellcheck .github/workflows/*.yml` when validating inline bash coverage.
 - If a single workflow is under active iteration, run `actionlint .github/workflows/<name>.yml`.
+- If touching `.github/workflows/security-self-scan.yml` or `.zizmor.yml`, run:
+  - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
 - Validate functional behavior from a consumer repo by pinning `uses:` to a branch ref when behavior changes.
 - If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository.
 - If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.

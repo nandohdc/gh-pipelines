@@ -19,4 +19,6 @@ runs:
 
     - name: Load kubeconfig
       shell: bash
-      run: doctl kubernetes cluster kubeconfig save "${{ inputs.cluster-id }}"
+      env:
+        CLUSTER_ID: ${{ inputs.cluster-id }}
+      run: doctl kubernetes cluster kubeconfig save "${CLUSTER_ID}"

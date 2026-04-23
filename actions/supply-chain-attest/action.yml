@@ -65,9 +65,12 @@ runs:
     - name: Sign image (keyless)
       if: ${{ inputs.sign-image == 'true' }}
       shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image-name }}
+        IMAGE_DIGEST: ${{ inputs.image-digest }}
       run: |
         set -euo pipefail
-        cosign sign --yes "${{ inputs.image-name }}@${{ inputs.image-digest }}"
+        cosign sign --yes "${IMAGE_NAME}@${IMAGE_DIGEST}"
 
     - name: Generate SLSA provenance attestation
       if: ${{ inputs.generate-provenance == 'true' }}

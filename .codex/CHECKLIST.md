@@ -28,8 +28,12 @@ Use this checklist before finishing any Codex task in this repository.
 
 - Run:
   - `actionlint .github/workflows/*.yml`
+- Run:
+  - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
 - If touching one workflow repeatedly, also run:
   - `actionlint .github/workflows/<name>.yml`
+- If touching `.github/workflows/security-self-scan.yml` or `.zizmor.yml`, run:
+  - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
 - If touching `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage exists under `tests/fixtures/`.
 - If touching `ci-terraform.yml` or `actions/setup-terraform`, run Terraform fixture checks in `tests/fixtures/terraform/` (`fmt`, `init`, `validate`, `plan`).
 - If touching `.github/workflows/release.yml`, validate in a non-production repository:

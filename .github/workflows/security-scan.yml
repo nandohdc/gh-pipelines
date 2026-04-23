@@ -77,7 +77,14 @@ jobs:
 
       - name: Build image
         if: inputs.build-image
-        run: docker build -t ${{ inputs.image-ref }} -f ${{ inputs.dockerfile }} ${{ inputs.context }}
+        shell: bash
+        env:
+          IMAGE_REF: ${{ inputs.image-ref }}
+          DOCKERFILE: ${{ inputs.dockerfile }}
+          BUILD_CONTEXT: ${{ inputs.context }}
+        run: |
+          set -euo pipefail
+          docker build -t "${IMAGE_REF}" -f "${DOCKERFILE}" "${BUILD_CONTEXT}"
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
