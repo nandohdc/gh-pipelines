@@ -1,0 +1,78 @@
+name: "Supply Chain Attest"
+description: "Generate SBOM artifacts, sign images, and emit provenance by digest."
+
+inputs:
+  image-name:
+    description: "Full image name including registry."
+    required: true
+  image-digest:
+    description: "Image digest (sha256:...)."
+    required: true
+  generate-sbom:
+    description: "Generate SPDX and CycloneDX SBOM artifacts."
+    required: false
+    default: "false"
+  generate-provenance:
+    description: "Generate SLSA provenance attestation."
+    required: false
+    default: "false"
+  sign-image:
+    description: "Sign image digest using cosign keyless mode."
+    required: false
+    default: "false"
+  sbom-artifact-suffix:
+    description: "Suffix appended to SBOM artifact names."
+    required: false
+    default: "run"
+  sbom-spdx-output:
+    description: "Output path for SPDX JSON SBOM."
+    required: false
+    default: "sbom.spdx.json"
+  sbom-cyclonedx-output:
+    description: "Output path for CycloneDX JSON SBOM."
+    required: false
+    default: "sbom.cyclonedx.json"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Generate SPDX SBOM
+      if: ${{ inputs.generate-sbom == 'true' }}
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ${{ inputs.image-name }}@${{ inputs.image-digest }}
+        format: spdx-json
+        output-file: ${{ inputs.sbom-spdx-output }}
+        artifact-name: sbom-spdx-${{ inputs.sbom-artifact-suffix }}
+        upload-artifact: true
+        upload-release-assets: false
+
+    - name: Generate CycloneDX SBOM
+      if: ${{ inputs.generate-sbom == 'true' }}
+      uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      with:
+        image: ${{ inputs.image-name }}@${{ inputs.image-digest }}
+        format: cyclonedx-json
+        output-file: ${{ inputs.sbom-cyclonedx-output }}
+        artifact-name: sbom-cyclonedx-${{ inputs.sbom-artifact-suffix }}
+        upload-artifact: true
+        upload-release-assets: false
+
+    - name: Install cosign
+      if: ${{ inputs.sign-image == 'true' }}
+      uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3.9.1
+
+    - name: Sign image (keyless)
+      if: ${{ inputs.sign-image == 'true' }}
+      shell: bash
+      run: |
+        set -euo pipefail
+        cosign sign --yes "${{ inputs.image-name }}@${{ inputs.image-digest }}"
+
+    - name: Generate SLSA provenance attestation
+      if: ${{ inputs.generate-provenance == 'true' }}
+      uses: actions/attest-build-provenance@v2
+      with:
+        subject-name: ${{ inputs.image-name }}
+        subject-digest: ${{ inputs.image-digest }}
+        push-to-registry: true

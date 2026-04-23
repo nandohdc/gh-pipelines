@@ -17,6 +17,14 @@ updates:
     open-pull-requests-limit: 10
 
   - package-ecosystem: "github-actions"
+    directory: "/actions/supply-chain-attest"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    open-pull-requests-limit: 10
+
+  - package-ecosystem: "github-actions"
     directory: "/actions/setup-doctl"
     schedule:
       interval: "weekly"

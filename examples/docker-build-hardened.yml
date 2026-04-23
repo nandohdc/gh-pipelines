@@ -1,0 +1,28 @@
+# =============================================================================
+# Example: Docker build caller workflow (optional hardening enabled)
+# =============================================================================
+# Enables SBOM generation, cosign keyless signing, and SLSA provenance for
+# pushed images from docker-build.yml.
+# =============================================================================
+
+name: docker-build-hardened
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    uses: nandohdc/gh-pipelines/.github/workflows/docker-build.yml@v1
+    with:
+      image-name: ghcr.io/${{ github.repository }}
+      generate-sbom: true
+      sign-image: true
+      generate-provenance: true
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+      id-token: write
+      attestations: write

@@ -13,11 +13,13 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
 | **Node CI** | `ci-node.yml` | Lint, test, coverage, and audit for Node.js services |
 | **Python CI** | `ci-python.yml` | Lint, test, coverage, and audit for Python services |
-| **Docker Build** | `docker-build.yml` | Build + push images to GHCR |
+| **Docker Build** | `docker-build.yml` | Build + push images to GHCR* |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
 | **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
 | **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with quality gate enforcement |
+
+*`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled.
 
 ## Available Composite Actions
 
@@ -29,6 +31,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Setup Helm** | `actions/setup-helm` | Helm CLI + standard chart repos |
 | **Setup doctl** | `actions/setup-doctl` | DigitalOcean CLI + kubeconfig |
 | **Docker Meta** | `actions/docker-meta` | Standard image tags + OCI labels |
+| **Supply Chain Attest** | `actions/supply-chain-attest` | Shared SBOM/sign/provenance steps by digest |
 
 ## Quick Start
 

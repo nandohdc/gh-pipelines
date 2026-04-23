@@ -3,12 +3,13 @@
 ## Project Structure & Module Organization
 This repository is a shared CI/CD library, not an application runtime.
 
-- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`).
+- `.github/workflows/*.yml`: reusable workflows (`workflow_call`) plus internal repo workflows (`lint.yml`, `test-callers.yml`, `release.yml`).
 - `actions/<name>/action.yml`: composite actions used by workflows.
 - `.github/dependabot.yml`: GitHub Actions dependency update policy for workflows and composite actions.
+- `.github/ISSUE_TEMPLATE/*`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`: repository governance and contribution templates.
 - `examples/*.yml`: caller workflow templates for consumer repositories.
 - `tests/fixtures/{go,node,python}`: minimal fixtures used by internal self-tests.
-- `docs/USAGE.md` and `docs/CONTRIBUTING.md`: canonical behavior and contribution rules.
+- `docs/USAGE.md`, `docs/CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`: canonical behavior and repository policy docs.
 
 Keep workflow/action names in kebab-case (for example, `ci-go.yml`, `setup-helm`).
 
@@ -21,7 +22,8 @@ Use `actionlint` as the primary local validation tool.
 There is no full local runtime harness for GitHub-hosted execution semantics. For functional validation:
 
 - Use the internal self-test workflow (`.github/workflows/test-callers.yml`) on PRs to `main` / pushes to `main`.
-- For consumer-level validation, point a downstream repo to your branch ref:
+- For consumer-level validation, point a downstream repo to your branch ref.
+- For release automation changes (`.github/workflows/release.yml`), validate both labeled and unlabeled PR paths in a non-production repository before promoting tags.
 
 ```yaml
 uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch
@@ -44,10 +46,13 @@ Release tags are the delivery mechanism:
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
 - If you changed `ci-go.yml`, `ci-node.yml`, or `ci-python.yml`, ensure matching fixture coverage under `tests/fixtures/`.
+- If you changed `docker-build.yml` hardening inputs or `actions/supply-chain-attest`, verify both default-path behavior (all hardening flags false) and hardened-path behavior in a non-production repository.
+- If you changed `release.yml`, verify `release:patch|release:minor|release:major` label handling and the no-label skip path.
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
 - If adding a new composite action directory under `actions/`, add/update its matching block in `.github/dependabot.yml`.
+- Keep `AGENTS.md` and `.codex/*.md` aligned when repository standards or tracker status change.
 
 ## Commit & Pull Request Guidelines
 Use Conventional Commit style (for example, `feat(workflows): add trivy input`).

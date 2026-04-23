@@ -4,20 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this repo is
 
-`gh-pipelines` is **not** an application. It is a library of reusable GitHub Actions artifacts consumed by other repositories in the `nandohdc` ecosystem via `uses: nandohdc/gh-pipelines/...@v1`. There is no build, no runtime, and no test suite beyond YAML linting — correctness is validated by (a) `actionlint` and (b) pointing a consumer repo's workflow at a branch and running it in GitHub.
+`gh-pipelines` is **not** an application. It is a library of reusable GitHub Actions artifacts consumed by other repositories in the `nandohdc` ecosystem via `uses: nandohdc/gh-pipelines/...@v1`. There is no build, no runtime, and no test suite beyond YAML linting — correctness is validated by (a) `actionlint` + `yamllint` (via `.github/workflows/lint.yml`), (b) the internal regression harness (`.github/workflows/test-callers.yml`) that calls the reusable CI workflows against `tests/fixtures/{go,node,python}` on every PR to `main`, and (c) pointing a consumer repo's workflow at a branch and running it in GitHub.
 
 The repo exposes two artifact kinds:
 
 - **Reusable workflows** in `.github/workflows/` — each uses `on: workflow_call` and is referenced as `nandohdc/gh-pipelines/.github/workflows/<name>.yml@v1`.
 - **Composite actions** in `actions/<name>/action.yml` — referenced as `nandohdc/gh-pipelines/actions/<name>@v1`.
 
-Reusable workflows compose composite actions (e.g. `ci-go.yml` calls `actions/setup-go`, `ci-node.yml` calls `actions/setup-node`, `ci-python.yml` calls `actions/setup-python`, `helm-deploy.yml` calls both `actions/setup-doctl` and `actions/setup-helm`). When editing, prefer pushing shared logic down into a composite action rather than duplicating steps across workflows.
+Reusable workflows compose composite actions (e.g. `ci-go.yml` calls `actions/setup-go`, `helm-deploy.yml` calls both `actions/setup-doctl` and `actions/setup-helm`, `docker-build.yml` delegates SBOM/provenance/cosign work to `actions/supply-chain-attest`). When editing, prefer pushing shared logic down into a composite action rather than duplicating steps across workflows.
 
 Current artifacts:
 
-- Reusable workflows: `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `docker-build.yml`, `docker-release.yml`, `helm-deploy.yml`, `lint.yml`, `security-scan.yml`, `sonar-scan.yml`.
-- Composite actions: `docker-meta`, `setup-doctl`, `setup-go`, `setup-helm`, `setup-node`, `setup-python`.
-- Every reusable workflow has a matching example in `examples/` (`go-service-ci.yml`, `node-service-ci.yml`, `python-service-ci.yml`, `docker-release.yml`, `helm-deploy.yml`, `sonar-scan.yml`).
+- **Reusable workflows** (consumer-facing, `workflow_call`): `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `docker-build.yml`, `docker-release.yml`, `helm-deploy.yml`, `security-scan.yml`, `sonar-scan.yml`.
+- **Internal workflows** (run only in this repo, do not expose `workflow_call`): `lint.yml` (actionlint + yamllint on PRs/pushes to `main`), `test-callers.yml` (regression harness — Go/Node/Python fixtures), `release.yml` (automated semver tag + `v1` move on merged PRs).
+- **Composite actions**: `docker-meta`, `setup-doctl`, `setup-go`, `setup-helm`, `setup-node`, `setup-python`, `supply-chain-attest`.
+- **Examples** in `examples/` — one per reusable workflow: `go-service-ci.yml`, `node-service-ci.yml`, `python-service-ci.yml`, `docker-build.yml`, `docker-build-hardened.yml`, `docker-release.yml`, `helm-deploy.yml`, `sonar-scan.yml`.
 
 ## Commands
 
@@ -29,33 +30,51 @@ actionlint .github/workflows/*.yml
 actionlint .github/workflows/ci-go.yml
 ```
 
-To integration-test a change, push it to a branch and point a consumer repo at that ref — e.g. `uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch`. There is no way to exercise these workflows locally in this repo.
+For functional validation:
+
+- `test-callers.yml` runs automatically on every PR to `main` and on pushes to `main`; it calls `ci-go.yml`, `ci-node.yml`, and `ci-python.yml` against `tests/fixtures/{go,node,python}`. If you change any of those workflows or the fixtures, expect that suite to catch regressions before release.
+- For full consumer-level validation, point a downstream repo at your branch — e.g. `uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch`. There is no way to exercise these workflows locally in this repo.
 
 ## Release model (important)
 
-Consumers pin to the floating major tag `@v1`, so **moving that tag is what ships changes to every consumer simultaneously**. Releases are two tag operations, not just one:
+Consumers pin to the floating major tag `@v1`, so **moving that tag is what ships changes to every consumer simultaneously**. Releases are **automated** by `release.yml` — when a PR to `main` is merged, the workflow inspects the PR's labels:
+
+- `release:patch` → bump patch (`vX.Y.Z` → `vX.Y.(Z+1)`)
+- `release:minor` → bump minor
+- `release:major` → bump major
+- no `release:*` label → no-op, the workflow exits successfully without tagging
+
+When a release label is present, `release.yml` creates the new `vX.Y.Z` tag, force-moves `v1` to the merge commit, and publishes a GitHub Release with auto-generated notes. `release.yml` derives the current version by listing remote tags (`git ls-remote --tags origin 'v*'`) and filtering with a portable semver regex — it does not rely on local tags.
+
+Prefer the automation. Only run the two-tag dance by hand as a break-glass:
 
 ```bash
 git tag v1.2.0 && git push origin v1.2.0
 git tag -f v1 v1.2.0 && git push origin v1 --force
 ```
 
-Backward-compatible additions (new optional inputs, bug fixes) move `v1`. Breaking changes (removing/renaming inputs, changing defaults that affect callers) require a new major — do not move `v1` for those.
+Backward-compatible additions (new optional inputs, bug fixes) should use `release:patch` or `release:minor`. Breaking changes (removing/renaming inputs, changing defaults that affect callers) require a new major tag lineage (e.g. `v2`) — do not use `release:major` to move `v1` across a compatibility boundary.
 
 ## Cross-cutting conventions
 
 These are enforced across every workflow/action — match them when adding or editing:
 
 - Every `workflow_call` input has `description`, `type`, `required`, and a `default` if optional.
-- `permissions:` is set at the workflow level to least-privilege. `docker-release.yml` is the one workflow that needs the broad set (`contents: write`, `packages: write`, `id-token: write`, `attestations: write`) because of cosign keyless signing + SLSA provenance + GitHub Release asset upload.
+- `permissions:` is set at the workflow (and per-job where feasible) to least-privilege. `docker-build.yml` scopes the extra permissions needed for hardening (`id-token: write`, `attestations: write`) to the individual SBOM / sign / provenance jobs, not the whole workflow. `docker-release.yml` is the one workflow that needs the broad set at workflow level because of cosign keyless signing + SLSA provenance + GitHub Release asset upload.
 - All `shell: bash` steps start with `set -euo pipefail`.
 - Every reusable workflow file has a header comment block with purpose + example caller snippet, and a matching example file in `examples/`.
-- Changes to a workflow's inputs/outputs must also update `docs/USAGE.md` and the table in `README.md`.
+- Third-party (non-`actions/*`, non-`github/*`) action refs are pinned to full commit SHAs with a trailing `# v<semver>` comment. GitHub-owned actions (`actions/checkout`, `actions/setup-*`, `actions/attest-build-provenance`) stay tag-pinned for readability. Dependabot watches `/` and every `actions/<name>/` directory weekly (see `.github/dependabot.yml`).
+- Consumer-interface changes (inputs, outputs, secrets, default behavior) must update **all** of: the table in `README.md`, the matching section in `docs/USAGE.md`, the matching example in `examples/`, and `CHANGELOG.md` under `## [Unreleased]`.
+- Adding a new composite action directory under `actions/` requires adding a matching `package-ecosystem: github-actions` block in `.github/dependabot.yml`.
+- Keep `AGENTS.md` and `.codex/*.md` in sync when repository standards change.
 
 ## Notable cross-file coupling
 
 - `helm-deploy.yml` hardcodes a DigitalOcean `cluster-id` default (`adc9fd65-…`). Callers can override, but changing that default is a breaking change for repos that rely on it.
-- `ci-go.yml` conditionally shells out to consumer-repo files that this repo doesn't own: `./scripts/check-gofmt.sh` (optional, falls back to inline `gofmt`), `./scripts/check-import-direction.sh` (when `run-import-direction: true`), and `make contract` (when `run-contract: true`). When modifying those jobs, preserve the opt-in toggles — consumers without those scripts rely on the defaults staying `false`.
+- `ci-go.yml` conditionally shells out to consumer-repo files that this repo doesn't own: `./scripts/check-gofmt.sh` (optional, falls back to inline `gofmt`), `./scripts/check-import-direction.sh` (when `run-import-direction: true`), and `make contract` (when `run-contract: true`). Preserve the opt-in toggles — consumers without those scripts rely on the defaults staying `false`.
 - `ci-node.yml` is intentionally self-contained for cross-repo calls — it does not `uses:` the local `actions/setup-node` via a relative path. When editing, keep setup steps inline so consumers pulling `@v1` resolve everything from a single ref. The same constraint applies to `ci-python.yml`.
 - `sonar-scan.yml` uses `workflow_call` secrets (`SONAR_TOKEN`, `SONAR_HOST_URL`) — callers must forward them explicitly under `secrets:`. The caller job also needs `permissions: contents: read, pull-requests: read` for PR decoration. Both are documented in the workflow header.
-- `docker-release.yml` references the image by digest (`${image}@${digest}`) for SBOM, cosign, and attestation steps. Keep that pattern — signing/attesting by tag is racy.
+- `docker-build.yml` exposes optional hardening inputs (`generate-sbom`, `generate-provenance`, `sign-image`) that all default to `false`. When enabled, each spawns a dedicated job that delegates to `actions/supply-chain-attest` and only runs when the image was actually pushed on the default branch with a resolved digest. Keep those defaults off so updates to `@v1` never change the behavior of existing consumers.
+- `docker-release.yml` and `actions/supply-chain-attest` reference the image by digest (`${image}@${digest}`) for SBOM, cosign, and attestation steps. Keep that pattern — signing/attesting by tag is racy.
+- `release.yml` parses PR labels with `jq` against `${GITHUB_EVENT_PATH}` and derives the next version from the remote tag list. If you change the labeling scheme, also update `.github/PULL_REQUEST_TEMPLATE.md`, `docs/CONTRIBUTING.md`, `AGENTS.md`, and this file.
+- `test-callers.yml` is **not** a reusable workflow — don't consume it from another repo. New self-tests belong there, one job per reusable workflow under test, pointed at a fixture under `tests/fixtures/`.

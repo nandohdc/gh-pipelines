@@ -52,6 +52,21 @@ on:
         type: string
         required: false
         default: ""
+      generate-sbom:
+        description: "Generate SPDX and CycloneDX SBOM artifacts for pushed images."
+        type: boolean
+        required: false
+        default: false
+      generate-provenance:
+        description: "Generate SLSA provenance attestation for pushed images."
+        type: boolean
+        required: false
+        default: false
+      sign-image:
+        description: "Sign pushed image digest with cosign keyless signing."
+        type: boolean
+        required: false
+        default: false
     outputs:
       digest:
         description: "Image digest (sha256:...)."
@@ -66,7 +81,6 @@ on:
 permissions:
   contents: read
   packages: write
-  id-token: write
 
 jobs:
   build:
@@ -110,3 +124,56 @@ jobs:
           build-args: ${{ inputs.build-args }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  sbom:
+    name: sbom
+    if: ${{ inputs.generate-sbom && inputs.push && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.build.outputs.digest != '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+      actions: write
+    steps:
+      - name: Generate SBOM artifacts
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        with:
+          image-name: ${{ inputs.image-name }}
+          image-digest: ${{ needs.build.outputs.digest }}
+          generate-sbom: "true"
+          sbom-artifact-suffix: ${{ github.run_id }}
+
+  sign-image:
+    name: sign-image
+    if: ${{ inputs.sign-image && inputs.push && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.build.outputs.digest != '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Sign image digest
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        with:
+          image-name: ${{ inputs.image-name }}
+          image-digest: ${{ needs.build.outputs.digest }}
+          sign-image: "true"
+
+  provenance:
+    name: provenance
+    if: ${{ inputs.generate-provenance && inputs.push && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.build.outputs.digest != '' }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - name: Generate provenance attestation
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        with:
+          image-name: ${{ inputs.image-name }}
+          image-digest: ${{ needs.build.outputs.digest }}
+          generate-provenance: "true"

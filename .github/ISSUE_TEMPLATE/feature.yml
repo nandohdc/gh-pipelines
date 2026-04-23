@@ -1,0 +1,44 @@
+name: Feature request
+description: Propose a new reusable workflow/action capability.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Describe the consumer problem first, then propose the API shape.
+
+  - type: textarea
+    id: use_case
+    attributes:
+      label: Intended consumer use case
+      description: What problem should this solve for caller repositories?
+      placeholder: "As a consumer repo, I want to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed_api
+    attributes:
+      label: Proposed API shape
+      description: Proposed inputs/outputs, defaults, and behavior contract.
+      placeholder: |
+        Workflow/action:
+        Inputs:
+        - name:
+          type:
+          default:
+        Outputs:
+        Compatibility notes:
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Optional alternatives or workarounds tried.
+      placeholder: "What alternatives did you evaluate?"
+    validations:
+      required: false

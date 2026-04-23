@@ -1,0 +1,23 @@
+# =============================================================================
+# Example: Docker build caller workflow (lean/default)
+# =============================================================================
+# Copy this file to your service repository at .github/workflows/docker.yml
+# and adjust the inputs to match your project.
+# =============================================================================
+
+name: docker-build
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    uses: nandohdc/gh-pipelines/.github/workflows/docker-build.yml@v1
+    with:
+      image-name: ghcr.io/${{ github.repository }}
+    permissions:
+      contents: read
+      packages: write
