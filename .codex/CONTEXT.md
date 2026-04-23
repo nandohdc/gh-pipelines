@@ -25,7 +25,10 @@
 - GitHub issue `#11` (Phase 11: docker-build hardening) is closed.
 - GitHub issue `#33` (Phase 12: Dependabot backlog burn-down) is closed.
 - GitHub issue `#34` (Phase 13: Terraform CI workflow) is closed.
-- GitHub issues `#35`, `#36`, `#37`, `#38` (Phases 14-17) are open.
+- GitHub issue `#35` (Phase 14: Branch protection for `main` + stale branch cleanup) is closed.
+- GitHub issue `#36` (Phase 15: Dependabot auto-merge for low-risk bumps) is closed.
+- GitHub issue `#37` (Phase 16: Workflow security self-scan with zizmor + shellcheck) is closed.
+- GitHub issue `#38` (Phase 17: Integration drift detector against real consumer repos) is open; manual dispatch and drift-issue acceptance are validated, first scheduled nightly run is pending.
 - Last tracker sync: `2026-04-23`.
 - Tracker state is sourced from GitHub issue status; branch contents in this workspace are the source of truth for code edits.
 
@@ -45,6 +48,9 @@
   - `.github/workflows/lint.yml`
   - `.github/workflows/test-callers.yml`
   - `.github/workflows/release.yml`
+  - `.github/workflows/security-self-scan.yml`
+  - `.github/workflows/dependabot-auto-merge.yml`
+  - `.github/workflows/integration-smoke.yml`
 - Internal repository self-CI lint workflow:
   - triggers on `pull_request` to `main` and `push` to `main`
   - runs `actionlint` and `yamllint` actions pinned by SHA
@@ -70,6 +76,19 @@
   - serializes executions via `concurrency` (`release-main`)
   - handles pre-existing computed tags idempotently when they already point to the target SHA
   - creates immutable `vX.Y.Z`, force-moves `v1`, and creates GitHub release notes
+- Internal workflow security self-scan:
+  - `.github/workflows/security-self-scan.yml`
+  - runs `zizmor` high-severity gate plus `actionlint -shellcheck=shellcheck` checks
+  - produces required status-check contexts `zizmor` and `shellcheck` on pull requests
+- Internal Dependabot auto-merge workflow:
+  - `.github/workflows/dependabot-auto-merge.yml`
+  - runs on `pull_request_target` and is scoped to Dependabot PRs targeting `main`
+  - enables auto-merge for patch/minor updates and comments for major updates
+- Internal integration drift workflow:
+  - `.github/workflows/integration-smoke.yml`
+  - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
+  - checks selected real consumers by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
+  - opens a `drift`-labeled issue in this repository on failure
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, and `sign-image` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance logic
@@ -97,7 +116,7 @@
 - Reusable workflow and action names stay in kebab-case.
 - `workflow_call` interfaces are stable contracts for consumer repos.
 - Internal-only workflows (like self-CI linting) are not exposed via `workflow_call`.
-- Internal-only workflows (like release automation) are not exposed via `workflow_call`.
+- Internal-only workflows (like release automation, security self-scan, and Dependabot auto-merge) are not exposed via `workflow_call`.
 - Workflow permissions must stay least-privilege.
 - `shell: bash` scripts must start with `set -euo pipefail`.
 - Third-party actions in workflows/composite actions are pinned by commit SHA with `# v<semver>` comments.
@@ -110,5 +129,7 @@
 - Local validation is static linting (`actionlint`) plus fixture-level command checks.
 - PR-level integration now includes internal caller validation through `.github/workflows/test-callers.yml`.
 - Release workflow behavior requires GitHub-hosted execution for full end-to-end validation.
+- Scheduled workflow acceptance (`on.schedule`) cannot be force-triggered via API and must be confirmed after the next cron window.
 - Branch protection for `main` requires pull requests and strict required status checks.
+- Current required status-check contexts are: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`.
 - Required approving reviews are intentionally set to `0` for solo-maintainer operation (self-approval is not possible on own PRs).

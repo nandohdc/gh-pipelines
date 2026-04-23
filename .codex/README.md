@@ -6,13 +6,15 @@ Current baseline:
 
 - Reusable workflows live in `.github/workflows/` and are consumed via `uses: nandohdc/gh-pipelines/.github/workflows/<name>.yml@v1`.
 - Composite actions live in `actions/<name>/action.yml` and are consumed via `uses: nandohdc/gh-pipelines/actions/<name>@v1`.
-- Internal maintenance workflows are `.github/workflows/lint.yml`, `.github/workflows/test-callers.yml`, and `.github/workflows/release.yml`.
+- Internal maintenance workflows are `.github/workflows/lint.yml`, `.github/workflows/test-callers.yml`, `.github/workflows/release.yml`, `.github/workflows/security-self-scan.yml`, `.github/workflows/dependabot-auto-merge.yml`, and `.github/workflows/integration-smoke.yml`.
 - Terraform CI coverage is available through `.github/workflows/ci-terraform.yml` and `actions/setup-terraform/action.yml`.
 - Docker build hardening is available via optional inputs in `.github/workflows/docker-build.yml` and shared helper logic in `actions/supply-chain-attest/action.yml`.
+- Workflow security self-scanning is available via `.github/workflows/security-self-scan.yml` and `.zizmor.yml`.
+- Integration drift detection is available via `.github/workflows/integration-smoke.yml` and `docs/INTEGRATION_CONSUMERS.md`.
 - Repository governance assets are present in `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`, `SECURITY.md`, and `CHANGELOG.md`.
 - Tracker snapshot (synced `2026-04-23`):
-  - Closed phases/issues: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`, `#11`, `#33`, `#34`
-  - Open phase issues: `#35`, `#36`, `#37`, `#38`
+  - Closed phases/issues: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`, `#11`, `#33`, `#34`, `#35`, `#36`, `#37`
+  - Open phase issues: `#38` (manual and drift acceptance validated; first scheduled nightly run still pending)
 - Release model is semver tags plus floating major (`v1.x.y` and `v1`), executed on pushes to `main` based on labels from the merged PR linked to the pushed commit.
 - `main` branch protection requires PR flow + strict required status checks; required approving reviews are set to `0` for solo-maintainer merges.
 
