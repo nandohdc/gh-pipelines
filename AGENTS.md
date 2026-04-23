@@ -23,7 +23,10 @@ There is no full local runtime harness for GitHub-hosted execution semantics. Fo
 
 - Use the internal self-test workflow (`.github/workflows/test-callers.yml`) on PRs to `main` / pushes to `main`.
 - For consumer-level validation, point a downstream repo to your branch ref.
-- For release automation changes (`.github/workflows/release.yml`), validate both labeled and unlabeled PR paths in a non-production repository before promoting tags.
+- For release automation changes (`.github/workflows/release.yml`), validate push-to-`main` behavior for:
+  - commits associated with merged PRs carrying `release:patch|release:minor|release:major`,
+  - commits associated with merged PRs with no release label (no-op path),
+  - rapid consecutive merges (release serialization behavior).
 
 ```yaml
 uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch
@@ -47,7 +50,10 @@ Release tags are the delivery mechanism:
 - Run `actionlint` before opening a PR.
 - If you changed `ci-go.yml`, `ci-node.yml`, or `ci-python.yml`, ensure matching fixture coverage under `tests/fixtures/`.
 - If you changed `docker-build.yml` hardening inputs or `actions/supply-chain-attest`, verify both default-path behavior (all hardening flags false) and hardened-path behavior in a non-production repository.
-- If you changed `release.yml`, verify `release:patch|release:minor|release:major` label handling and the no-label skip path.
+- If you changed `release.yml`, verify:
+  - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main`,
+  - no-label skip path,
+  - release serialization and idempotent tag handling.
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
