@@ -38,6 +38,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
           set -euo pipefail
 
@@ -46,6 +47,9 @@ jobs:
               --jq 'map(select(.merged_at != null and .base.ref == "main")) | .[0].number // empty' \
               || true
           )
+          if [ -z "${pr_number}" ] && [[ "${HEAD_COMMIT_MESSAGE}" =~ ^Merge[[:space:]]pull[[:space:]]request[[:space:]]#([0-9]+) ]]; then
+            pr_number="${BASH_REMATCH[1]}"
+          fi
           if [ -z "${pr_number}" ]; then
             echo "No merged PR associated with commit ${GITHUB_SHA}; skipping release."
             {

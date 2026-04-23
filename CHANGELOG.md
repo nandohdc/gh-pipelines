@@ -22,6 +22,7 @@ Notes:
 ### Changed
 
 - Validated no-release-label behavior in release automation (`chore(ci): validate no-label release behavior`).
+- Protected `main` with PR + CODEOWNERS review and required checks, enabled auto-delete head branches, and cleaned up stale merged branches.
 
 ## [v1.5.2] - 2026-04-22
 

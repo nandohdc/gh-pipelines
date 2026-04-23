@@ -30,6 +30,8 @@ Use this checklist before finishing any Codex task in this repository.
   - `actionlint .github/workflows/*.yml`
 - If touching one workflow repeatedly, also run:
   - `actionlint .github/workflows/<name>.yml`
+- If touching `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage exists under `tests/fixtures/`.
+- If touching `ci-terraform.yml` or `actions/setup-terraform`, run Terraform fixture checks in `tests/fixtures/terraform/` (`fmt`, `init`, `validate`, `plan`).
 - If touching `.github/workflows/release.yml`, validate in a non-production repository:
   - push-to-`main` path for commits associated with merged PRs that carry release labels,
   - no-label skip path,

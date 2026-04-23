@@ -24,7 +24,8 @@
 - GitHub issue `#10` (Phase 10: repository hygiene/templates/governance docs) is closed.
 - GitHub issue `#11` (Phase 11: docker-build hardening) is closed.
 - GitHub issue `#33` (Phase 12: Dependabot backlog burn-down) is closed.
-- GitHub issues `#34`, `#35`, `#36`, `#37`, `#38` (Phases 13-17) are open.
+- GitHub issue `#34` (Phase 13: Terraform CI workflow) is closed.
+- GitHub issues `#35`, `#36`, `#37`, `#38` (Phases 14-17) are open.
 - Last tracker sync: `2026-04-23`.
 - Tracker state is sourced from GitHub issue status; branch contents in this workspace are the source of truth for code edits.
 
@@ -34,6 +35,7 @@
   - `.github/workflows/ci-go.yml`
   - `.github/workflows/ci-node.yml`
   - `.github/workflows/ci-python.yml`
+  - `.github/workflows/ci-terraform.yml`
   - `.github/workflows/docker-build.yml`
   - `.github/workflows/docker-release.yml`
   - `.github/workflows/helm-deploy.yml`
@@ -58,8 +60,8 @@
 - Internal reusable-workflow self-test harness:
   - `.github/workflows/test-callers.yml`
   - triggers on `pull_request` to `main` and `push` to `main`
-  - calls `ci-go.yml`, `ci-node.yml`, and `ci-python.yml` via relative `uses:`
-  - validates against fixtures in `tests/fixtures/{go,node,python}`
+  - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, and `ci-terraform.yml` via relative `uses:`
+  - validates against fixtures in `tests/fixtures/{go,node,python,terraform}`
 - Internal release automation workflow:
   - triggers on `push` to `main`
   - resolves release labels from the merged PR associated with `GITHUB_SHA`
@@ -77,6 +79,7 @@
   - `actions/setup-go`
   - `actions/setup-node`
   - `actions/setup-python`
+  - `actions/setup-terraform`
   - `actions/setup-doctl`
   - `actions/setup-helm`
   - `actions/docker-meta`

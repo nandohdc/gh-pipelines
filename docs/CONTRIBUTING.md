@@ -150,3 +150,10 @@ When adding inputs or behavior to any `ci-*` workflow:
 - [ ] `docs/USAGE.md` updated
 - [ ] `README.md` table updated
 - [ ] Example caller added/updated in `examples/`
+
+## Branch Protection & Branch Hygiene
+
+- `main` is protected: all changes must go through a pull request and require CODEOWNERS review.
+- Required checks must be green before merge.
+- Head branches are auto-deleted on merge.
+- Maintainers should sweep leftover remote branches weekly and remove stale merged branches.
