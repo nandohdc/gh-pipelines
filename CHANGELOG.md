@@ -19,6 +19,7 @@ Notes:
 - Added Terraform caller example and minimal fixture coverage in `test-callers.yml`.
 - Added Dependabot coverage for `/actions/setup-terraform`.
 - Added internal Dependabot auto-merge workflow for patch/minor updates (`.github/workflows/dependabot-auto-merge.yml`) with maintainer-review fallback for majors.
+- Added nightly integration canary workflow (`integration-smoke.yml`) and consumer runbook (`docs/INTEGRATION_CONSUMERS.md`) for drift detection against real repositories.
 
 ### Changed
 
