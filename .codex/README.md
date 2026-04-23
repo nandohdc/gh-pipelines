@@ -9,10 +9,10 @@ Current baseline:
 - Internal maintenance workflows are `.github/workflows/lint.yml`, `.github/workflows/test-callers.yml`, and `.github/workflows/release.yml`.
 - Docker build hardening is available via optional inputs in `.github/workflows/docker-build.yml` and shared helper logic in `actions/supply-chain-attest/action.yml`.
 - Repository governance assets are present in `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`, `SECURITY.md`, and `CHANGELOG.md`.
-- Tracker snapshot (synced `2026-04-22`):
-  - Closed phases: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`
-  - Open work: `#11` (docker-build hardening follow-up), `#12` (Dependabot update)
-- Release model is semver tags plus floating major (`v1.x.y` and `v1`).
+- Tracker snapshot (synced `2026-04-23`):
+  - Closed phases/issues: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`, `#11`, `#33`
+  - Open phase issues: `#34`, `#35`, `#36`, `#37`, `#38`
+- Release model is semver tags plus floating major (`v1.x.y` and `v1`), executed on pushes to `main` based on labels from the merged PR linked to the pushed commit.
 
 Files:
 

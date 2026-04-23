@@ -1,0 +1,24 @@
+# =============================================================================
+# Example: Terraform service CI caller workflow
+# =============================================================================
+# Copy this file to your Terraform repository at .github/workflows/ci.yml
+# and adjust the inputs to match your project.
+# =============================================================================
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1
+    with:
+      terraform-version: "1.9.8"
+      working-directory: "infra"
+      var-file: "envs/dev.tfvars"
+      backend-config: "envs/dev.backend.hcl"
+      run-audit: true
+      audit-tool: "tfsec"
+      upload-plan: true

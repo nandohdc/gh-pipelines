@@ -42,3 +42,10 @@ jobs:
       lint-paths: tests/fixtures/python/src tests/fixtures/python/tests
       test-paths: tests/fixtures/python/tests
       run-audit: false
+
+  test-ci-terraform:
+    name: test ci-terraform caller
+    uses: ./.github/workflows/ci-terraform.yml
+    with:
+      working-directory: tests/fixtures/terraform
+      run-audit: false

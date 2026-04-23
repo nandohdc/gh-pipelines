@@ -1,0 +1,196 @@
+# =============================================================================
+# ci-terraform.yml — Reusable Terraform CI pipeline
+# =============================================================================
+# Runs formatting, validation, planning, and optional IaC audit checks for
+# Terraform projects.
+#
+# Cloud credentials are intentionally caller-managed (environment variables or
+# OIDC) and are not configured by this reusable workflow.
+#
+# Example caller:
+#   jobs:
+#     ci:
+#       uses: nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1
+#       with:
+#         terraform-version: "1.9.8"
+#         working-directory: "infra"
+# =============================================================================
+
+name: ci-terraform
+
+on:
+  workflow_call:
+    inputs:
+      terraform-version:
+        description: "Terraform version to install."
+        type: string
+        required: false
+        default: "1.9.8"
+      working-directory:
+        description: "Directory containing Terraform configuration files."
+        type: string
+        required: false
+        default: "."
+      var-file:
+        description: "Optional var-file passed to terraform plan."
+        type: string
+        required: false
+        default: ""
+      backend-config:
+        description: "Optional backend config passed to terraform init (key=value or file path)."
+        type: string
+        required: false
+        default: ""
+      run-audit:
+        description: "Run IaC security audit."
+        type: boolean
+        required: false
+        default: true
+      audit-tool:
+        description: "Audit tool to run (tfsec|checkov)."
+        type: string
+        required: false
+        default: "tfsec"
+      upload-plan:
+        description: "Upload tfplan artifact on pull_request events."
+        type: boolean
+        required: false
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  fmt:
+    name: fmt
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: ./actions/setup-terraform
+        with:
+          terraform-version: ${{ inputs.terraform-version }}
+
+      - name: Check formatting
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform fmt -check -recursive
+
+  validate:
+    name: validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: ./actions/setup-terraform
+        with:
+          terraform-version: ${{ inputs.terraform-version }}
+
+      - name: Terraform init (backend disabled)
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform init -backend=false -input=false
+
+      - name: Terraform validate
+        shell: bash
+        run: |
+          set -euo pipefail
+          terraform validate
+
+  plan:
+    name: plan
+    needs:
+      - fmt
+      - validate
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working-directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Terraform
+        uses: ./actions/setup-terraform
+        with:
+          terraform-version: ${{ inputs.terraform-version }}
+
+      - name: Terraform init (backend enabled)
+        shell: bash
+        env:
+          BACKEND_CONFIG: ${{ inputs.backend-config }}
+        run: |
+          set -euo pipefail
+          init_args=("-input=false")
+          if [ -n "${BACKEND_CONFIG}" ]; then
+            init_args+=("-backend-config=${BACKEND_CONFIG}")
+          fi
+          terraform init "${init_args[@]}"
+
+      - name: Terraform plan
+        shell: bash
+        env:
+          VAR_FILE: ${{ inputs.var-file }}
+        run: |
+          set -euo pipefail
+          plan_args=("-out=tfplan" "-input=false")
+          if [ -n "${VAR_FILE}" ]; then
+            plan_args+=("-var-file=${VAR_FILE}")
+          fi
+          terraform plan "${plan_args[@]}"
+
+      - name: Upload tfplan artifact
+        if: github.event_name == 'pull_request' && inputs.upload-plan
+        uses: actions/upload-artifact@v7
+        with:
+          name: tfplan
+          path: ${{ inputs.working-directory }}/tfplan
+          if-no-files-found: error
+
+  audit:
+    name: audit
+    if: inputs.run-audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Validate audit tool
+        shell: bash
+        env:
+          AUDIT_TOOL: ${{ inputs.audit-tool }}
+        run: |
+          set -euo pipefail
+          case "${AUDIT_TOOL}" in
+            tfsec|checkov) ;;
+            *)
+              echo "::error::Unsupported audit-tool '${AUDIT_TOOL}'. Use tfsec or checkov."
+              exit 1
+              ;;
+          esac
+
+      - name: Run tfsec
+        if: inputs.audit-tool == 'tfsec'
+        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 # v1.0.3
+        with:
+          working_directory: ${{ inputs.working-directory }}
+
+      - name: Run checkov
+        if: inputs.audit-tool == 'checkov'
+        uses: bridgecrewio/checkov-action@99bb2caf247dfd9f03cf984373bc6043d4e32ebf # v12.1347.0
+        with:
+          directory: ${{ inputs.working-directory }}
+          framework: terraform
+          output_format: cli

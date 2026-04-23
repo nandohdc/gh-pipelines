@@ -42,9 +42,12 @@ These standards are mandatory for Codex changes in this repository.
 ## Release workflow standards
 
 - Keep `.github/workflows/release.yml` internal (do not convert it to `workflow_call`).
+- Keep release trigger on `push` to `main` and derive release intent from labels on the merged PR associated with the pushed commit.
 - Preserve release label contract: `release:patch`, `release:minor`, and `release:major`.
-- Preserve successful no-op behavior when no release label is present.
-- Keep release workflow permissions minimal and scoped to required release operations.
+- Preserve successful no-op behavior when no release label is present on the associated merged PR.
+- Keep release workflow permissions minimal and scoped to required release operations (`contents: write` and `pull-requests: read`).
+- Keep release serialization (`concurrency`) enabled to prevent semver/tag races during rapid merge bursts.
+- Keep tag publication idempotent when the computed tag already exists at the same target SHA.
 - Continue creating immutable `vX.Y.Z` tags and moving `v1` only for backward-compatible changes.
 
 ## Documentation standards
@@ -62,6 +65,7 @@ These standards are mandatory for Codex changes in this repository.
 - If a single workflow is under active iteration, run `actionlint .github/workflows/<name>.yml`.
 - Validate functional behavior from a consumer repo by pinning `uses:` to a branch ref when behavior changes.
 - If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository.
+- If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.
 
 ## Release standards
 

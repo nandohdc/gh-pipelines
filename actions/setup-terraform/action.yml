@@ -1,0 +1,42 @@
+name: "Setup Terraform"
+description: "Setup Terraform CLI with optional provider plugin caching."
+
+inputs:
+  terraform-version:
+    description: "Terraform version to install."
+    required: false
+    default: "1.9.8"
+  cache:
+    description: "Enable Terraform provider plugin cache."
+    required: false
+    default: "true"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Terraform ${{ inputs.terraform-version }}
+      uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+      with:
+        terraform_version: ${{ inputs.terraform-version }}
+        terraform_wrapper: false
+
+    - name: Configure Terraform plugin cache directory
+      if: inputs.cache == 'true'
+      id: terraform-plugin-cache
+      shell: bash
+      run: |
+        set -euo pipefail
+        cache_dir="${RUNNER_TEMP}/terraform-plugin-cache"
+        mkdir -p "${cache_dir}"
+        echo "TF_PLUGIN_CACHE_DIR=${cache_dir}" >> "${GITHUB_ENV}"
+        echo "cache-dir=${cache_dir}" >> "${GITHUB_OUTPUT}"
+
+    - name: Cache Terraform provider plugins
+      if: inputs.cache == 'true'
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.terraform-plugin-cache.outputs.cache-dir }}
+        key: terraform-plugin-cache-${{ runner.os }}-${{ inputs.terraform-version }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+        restore-keys: |
+          terraform-plugin-cache-${{ runner.os }}-${{ inputs.terraform-version }}-
+          terraform-plugin-cache-${{ runner.os }}-

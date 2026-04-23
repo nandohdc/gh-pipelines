@@ -22,9 +22,10 @@
 - GitHub issue `#8` (Phase 8: release automation for `v1.x.y` and `v1`) is closed.
 - GitHub issue `#9` (Phase 9: Terraform CI workflow) is closed.
 - GitHub issue `#10` (Phase 10: repository hygiene/templates/governance docs) is closed.
-- GitHub issue `#11` (Phase 11: docker-build hardening) is open.
-- GitHub issue `#12` (Dependabot bump for `digitalocean/action-doctl`) is open.
-- Last tracker sync: `2026-04-22`.
+- GitHub issue `#11` (Phase 11: docker-build hardening) is closed.
+- GitHub issue `#33` (Phase 12: Dependabot backlog burn-down) is closed.
+- GitHub issues `#34`, `#35`, `#36`, `#37`, `#38` (Phases 13-17) are open.
+- Last tracker sync: `2026-04-23`.
 - Tracker state is sourced from GitHub issue status; branch contents in this workspace are the source of truth for code edits.
 
 ## Implemented capabilities (current state)
@@ -60,9 +61,12 @@
   - calls `ci-go.yml`, `ci-node.yml`, and `ci-python.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python}`
 - Internal release automation workflow:
-  - triggers on merged pull requests to `main`
+  - triggers on `push` to `main`
+  - resolves release labels from the merged PR associated with `GITHUB_SHA`
   - derives semver bump from labels `release:patch|release:minor|release:major`
-  - no-ops when no release label exists
+  - no-ops when no release label exists on the associated merged PR
+  - serializes executions via `concurrency` (`release-main`)
+  - handles pre-existing computed tags idempotently when they already point to the target SHA
   - creates immutable `vX.Y.Z`, force-moves `v1`, and creates GitHub release notes
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, and `sign-image` inputs (default `false`)
