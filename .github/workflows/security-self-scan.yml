@@ -42,7 +42,9 @@ jobs:
             actions/**/action.yml
 
       - name: Upload zizmor SARIF
+        id: upload_sarif
         if: always()
+        continue-on-error: true
         uses: zizmorcore/zizmor-action@b1d7e1fb5de872772f31590499237e7cce841e8e # v0.5.3
         with:
           min-severity: high
@@ -50,6 +52,13 @@ jobs:
           inputs: |
             .github/workflows/**
             actions/**/action.yml
+
+      - name: Warn when SARIF upload is unavailable
+        if: always() && steps.upload_sarif.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "::warning::zizmor SARIF upload failed (for example, if code scanning is not enabled)."
 
   shellcheck:
     name: shellcheck
