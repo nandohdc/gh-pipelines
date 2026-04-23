@@ -8,7 +8,7 @@ This repository is a shared CI/CD library, not an application runtime.
 - `.github/dependabot.yml`: GitHub Actions dependency update policy for workflows and composite actions.
 - `.github/ISSUE_TEMPLATE/*`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`: repository governance and contribution templates.
 - `examples/*.yml`: caller workflow templates for consumer repositories.
-- `tests/fixtures/{go,node,python}`: minimal fixtures used by internal self-tests.
+- `tests/fixtures/{go,node,python,terraform}`: minimal fixtures used by internal self-tests.
 - `docs/USAGE.md`, `docs/CONTRIBUTING.md`, `SECURITY.md`, and `CHANGELOG.md`: canonical behavior and repository policy docs.
 
 Keep workflow/action names in kebab-case (for example, `ci-go.yml`, `setup-helm`).
@@ -48,7 +48,8 @@ Release tags are the delivery mechanism:
 
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
-- If you changed `ci-go.yml`, `ci-node.yml`, or `ci-python.yml`, ensure matching fixture coverage under `tests/fixtures/`.
+- If you changed `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage under `tests/fixtures/`.
+- If you changed `ci-terraform.yml` or `actions/setup-terraform`, validate Terraform fixture behavior (`fmt`, `init`, `validate`, `plan`) in `tests/fixtures/terraform/`.
 - If you changed `docker-build.yml` hardening inputs or `actions/supply-chain-attest`, verify both default-path behavior (all hardening flags false) and hardened-path behavior in a non-production repository.
 - If you changed `release.yml`, verify:
   - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main`,
