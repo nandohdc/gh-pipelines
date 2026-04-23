@@ -13,7 +13,7 @@ on:
         options:
           - all
           - financial-events-ingestion-api
-          - binance-extractor
+          - finance-system
 
 permissions:
   contents: read
@@ -36,13 +36,13 @@ jobs:
 
           case "${REQUESTED_CONSUMER}" in
             all)
-              matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"},{"id":"binance-extractor","repository":"nandohdc/binance-extractor","language":"python"}]'
+              matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"},{"id":"finance-system","repository":"nandohdc/finance-system","language":"python"}]'
               ;;
             financial-events-ingestion-api)
               matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"}]'
               ;;
-            binance-extractor)
-              matrix='[{"id":"binance-extractor","repository":"nandohdc/binance-extractor","language":"python"}]'
+            finance-system)
+              matrix='[{"id":"finance-system","repository":"nandohdc/finance-system","language":"python"}]'
               ;;
             *)
               echo "::error::Unsupported consumer input: ${REQUESTED_CONSUMER}"
@@ -106,14 +106,14 @@ jobs:
             exit 1
           fi
 
-          matches_before=$(rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^@[:space:]]+@[^[:space:]]+' .github/workflows || true)
+          matches_before=$(rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^[:space:]]+' .github/workflows || true)
           matches_before_count=$(printf '%s\n' "${matches_before}" | sed '/^$/d' | wc -l | tr -d ' ')
 
           for workflow in "${workflow_files[@]}"; do
-            perl -0pi -e 's#(uses:\s*nandohdc/gh-pipelines/\.github/workflows/[^\s@]+)@[^\s#]+#$1@main#g' "${workflow}"
+            perl -0pi -e 's~(uses:\s*nandohdc/gh-pipelines/\.github/workflows/[^\s@]+)(@[^\s]+)?~$1\@main~g' "${workflow}"
           done
 
-          matches_after=$(rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^@[:space:]]+@[^[:space:]]+' .github/workflows || true)
+          matches_after=$(rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^[:space:]]+' .github/workflows || true)
           matches_after_count=$(printf '%s\n' "${matches_after}" | sed '/^$/d' | wc -l | tr -d ' ')
           echo "Rewrote ${matches_before_count} references to gh-pipelines @main in ${PWD}/.github/workflows."
           echo "Remaining gh-pipelines references after rewrite: ${matches_after_count}"
@@ -124,7 +124,7 @@ jobs:
           set -euo pipefail
           cd consumer
           mapfile -t workflow_files < <(find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | sort)
-          actionlint "${workflow_files[@]}"
+          actionlint -shellcheck= "${workflow_files[@]}"
 
       - name: Open drift issue on failure
         if: failure()

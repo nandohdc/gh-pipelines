@@ -7,7 +7,7 @@ This document tracks the real consumer repositories used by `.github/workflows/i
 | Consumer | Language | Why this canary |
 | --- | --- | --- |
 | `nandohdc/financial-events-ingestion-api` | Go | Active backend workload with strict CI requirements (lint, contract checks, integration tests, supply-chain checks). |
-| `nandohdc/binance-extractor` | Python | Active Python workload with dependency-management and lint/test expectations different from Go services. |
+| `nandohdc/finance-system` | Python | Active Python-heavy platform repository with CI workflows and dependency-management concerns distinct from Go services. |
 
 Selection criteria used:
 
