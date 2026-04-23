@@ -23,9 +23,11 @@ There is no full local runtime harness for GitHub-hosted execution semantics. Fo
 
 - Use the internal self-test workflow (`.github/workflows/test-callers.yml`) on PRs to `main` / pushes to `main`.
 - For consumer-level validation, point a downstream repo to your branch ref.
+- `main` is protected: direct pushes are rejected; ship changes through PRs with required checks + CODEOWNERS review.
 - For release automation changes (`.github/workflows/release.yml`), validate push-to-`main` behavior for:
   - commits associated with merged PRs carrying `release:patch|release:minor|release:major`,
   - commits associated with merged PRs with no release label (no-op path),
+  - merge commits where commit-to-PR lookup needs fallback to parse `Merge pull request #...`,
   - rapid consecutive merges (release serialization behavior).
 
 ```yaml
@@ -54,7 +56,9 @@ Release tags are the delivery mechanism:
 - If you changed `release.yml`, verify:
   - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main`,
   - no-label skip path,
+  - merge-commit fallback PR detection path,
   - release serialization and idempotent tag handling.
+- If you changed `lint.yml` or `test-callers.yml` job names, keep protected required-check contexts aligned (currently: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`).
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
@@ -68,6 +72,7 @@ PRs should include:
 - what changed and why,
 - compatibility impact (backward-compatible vs breaking),
 - updated documentation/examples for any interface change,
+- CODEOWNERS approval and protected-check readiness for merge to `main`,
 - least-privilege permission review and secret-handling review.
 
 Breaking workflow/action interfaces require a new major release tag; do not move `v1` for breaking changes.
