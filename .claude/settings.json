@@ -2,6 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(actionlint:*)",
+      "Bash(yamllint:*)",
+      "Bash(shellcheck:*)",
+      "Bash(uvx:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
@@ -13,7 +18,9 @@
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",
       "Bash(gh workflow view:*)",
-      "Bash(gh workflow list:*)"
+      "Bash(gh workflow list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)"
     ]
   }
 }
