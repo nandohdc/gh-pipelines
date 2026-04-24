@@ -13,7 +13,6 @@ on:
         options:
           - all
           - financial-events-ingestion-api
-          - finance-system
 
 permissions:
   contents: read
@@ -35,13 +34,10 @@ jobs:
 
           case "${REQUESTED_CONSUMER}" in
             all)
-              matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"},{"id":"finance-system","repository":"nandohdc/finance-system","language":"python"}]'
+              matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"}]'
               ;;
             financial-events-ingestion-api)
               matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"}]'
-              ;;
-            finance-system)
-              matrix='[{"id":"finance-system","repository":"nandohdc/finance-system","language":"python"}]'
               ;;
             *)
               echo "::error::Unsupported consumer input: ${REQUESTED_CONSUMER}"

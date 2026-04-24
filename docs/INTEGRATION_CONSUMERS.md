@@ -7,7 +7,6 @@ This document tracks the real consumer repositories used by `.github/workflows/i
 | Consumer | Language | Why this canary |
 | --- | --- | --- |
 | `nandohdc/financial-events-ingestion-api` | Go | Active backend workload with strict CI requirements (lint, contract checks, integration tests, supply-chain checks). |
-| `nandohdc/finance-system` | Python | Active Python-heavy platform repository with CI workflows and dependency-management concerns distinct from Go services. |
 
 Selection criteria used:
 
@@ -30,7 +29,7 @@ Selection criteria used:
    - `sonar-missing` label for missing Sonar coverage
    - `drift` label for all other parse/lint failures
 
-The consumer repositories are private, so the workflow requires `INTEGRATION_PAT` with read access to both canary repos.
+The consumer repository is private, so the workflow requires `INTEGRATION_PAT` with read access to the active canary repo.
 
 ## Sonar Bundle Secret Model
 
@@ -46,7 +45,6 @@ Use `scripts/enforce-sonar-branch-protection.sh` from this repository to append 
 
 ```bash
 ./scripts/enforce-sonar-branch-protection.sh nandohdc/financial-events-ingestion-api "ci / sonar-scan" main
-./scripts/enforce-sonar-branch-protection.sh nandohdc/finance-system "ci / sonar-scan" main
 ```
 
 If the context already exists, the script no-ops.
