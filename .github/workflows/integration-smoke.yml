@@ -108,14 +108,23 @@ jobs:
             exit 1
           fi
 
-          matches_before=$(rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^[:space:]]+' .github/workflows || true)
+          find_pipeline_refs() {
+            local pattern='uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^[:space:]]+'
+            if command -v rg >/dev/null 2>&1; then
+              rg -n --no-heading "${pattern}" .github/workflows || true
+            else
+              grep -REn "${pattern}" .github/workflows || true
+            fi
+          }
+
+          matches_before="$(find_pipeline_refs)"
           matches_before_count=$(printf '%s\n' "${matches_before}" | sed '/^$/d' | wc -l | tr -d ' ')
 
           for workflow in "${workflow_files[@]}"; do
             perl -0pi -e 's~(uses:\s*nandohdc/gh-pipelines/\.github/workflows/[^\s@]+)(@[^\s]+)?~$1\@main~g' "${workflow}"
           done
 
-          matches_after=$(rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^[:space:]]+' .github/workflows || true)
+          matches_after="$(find_pipeline_refs)"
           matches_after_count=$(printf '%s\n' "${matches_after}" | sed '/^$/d' | wc -l | tr -d ' ')
           echo "Rewrote ${matches_before_count} references to gh-pipelines @main in ${PWD}/.github/workflows."
           echo "Remaining gh-pipelines references after rewrite: ${matches_after_count}"
@@ -131,7 +140,14 @@ jobs:
             exit 0
           fi
 
-          if rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/(sonar-scan|ci-with-sonar-(go|node|python))\.yml@' .github/workflows >/dev/null; then
+          sonar_pattern='uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/(sonar-scan|ci-with-sonar-(go|node|python))\.yml@'
+          if command -v rg >/dev/null 2>&1; then
+            has_sonar_reference="$(rg -n --no-heading "${sonar_pattern}" .github/workflows || true)"
+          else
+            has_sonar_reference="$(grep -REn "${sonar_pattern}" .github/workflows || true)"
+          fi
+
+          if [ -n "${has_sonar_reference}" ]; then
             echo "Detected Sonar integration reference in consumer workflows."
             exit 0
           fi
