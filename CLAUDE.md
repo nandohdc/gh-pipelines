@@ -15,10 +15,10 @@ Reusable workflows compose composite actions (e.g. `ci-go.yml` calls `actions/se
 
 Current artifacts:
 
-- **Reusable workflows** (consumer-facing, `workflow_call`): `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `docker-build.yml`, `docker-release.yml`, `helm-deploy.yml`, `security-scan.yml`, `sonar-scan.yml`.
+- **Reusable workflows** (consumer-facing, `workflow_call`): `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-go.yml`, `ci-with-sonar-node.yml`, `ci-with-sonar-python.yml`, `docker-build.yml`, `docker-release.yml`, `helm-deploy.yml`, `security-scan.yml`, `sonar-scan.yml`.
 - **Internal workflows** (run only in this repo, do not expose `workflow_call`): `lint.yml` (actionlint + yamllint on PRs/pushes to `main`), `test-callers.yml` (regression harness — Go/Node/Python fixtures), `release.yml` (automated semver tag + `v1` move on merged PRs).
 - **Composite actions**: `docker-meta`, `setup-doctl`, `setup-go`, `setup-helm`, `setup-node`, `setup-python`, `supply-chain-attest`.
-- **Examples** in `examples/` — one per reusable workflow: `go-service-ci.yml`, `node-service-ci.yml`, `python-service-ci.yml`, `docker-build.yml`, `docker-build-hardened.yml`, `docker-release.yml`, `helm-deploy.yml`, `sonar-scan.yml`.
+- **Examples** in `examples/` — one per reusable workflow: `go-service-ci.yml`, `node-service-ci.yml`, `python-service-ci.yml`, `ci-with-sonar-go.yml`, `ci-with-sonar-node.yml`, `ci-with-sonar-python.yml`, `docker-build.yml`, `docker-build-hardened.yml`, `docker-release.yml`, `helm-deploy.yml`, `sonar-scan.yml`.
 
 ## Commands
 
@@ -37,7 +37,7 @@ UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/
 
 For functional validation:
 
-- `test-callers.yml` runs automatically on every PR to `main` and on pushes to `main`; it calls `ci-go.yml`, `ci-node.yml`, and `ci-python.yml` against `tests/fixtures/{go,node,python}`. If you change any of those workflows or the fixtures, expect that suite to catch regressions before release.
+- `test-callers.yml` runs automatically on every PR to `main` and on pushes to `main`; it calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, and `ci-with-sonar-{go,node,python}.yml` against `tests/fixtures/{go,node,python}`. If you change any of those workflows or the fixtures, expect that suite to catch regressions before release.
 - For full consumer-level validation, point a downstream repo at your branch — e.g. `uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch`. There is no way to exercise these workflows locally in this repo.
 
 ## Release model (important)
@@ -79,6 +79,7 @@ These are enforced across every workflow/action — match them when adding or ed
 - `ci-go.yml` conditionally shells out to consumer-repo files that this repo doesn't own: `./scripts/check-gofmt.sh` (optional, falls back to inline `gofmt`), `./scripts/check-import-direction.sh` (when `run-import-direction: true`), and `make contract` (when `run-contract: true`). Preserve the opt-in toggles — consumers without those scripts rely on the defaults staying `false`.
 - `ci-node.yml` is intentionally self-contained for cross-repo calls — it does not `uses:` the local `actions/setup-node` via a relative path. When editing, keep setup steps inline so consumers pulling `@v1` resolve everything from a single ref. The same constraint applies to `ci-python.yml`.
 - `sonar-scan.yml` uses `workflow_call` secrets (`SONAR_TOKEN`, `SONAR_HOST_URL`) — callers must forward them explicitly under `secrets:`. The caller job also needs `permissions: contents: read, pull-requests: read` for PR decoration. Both are documented in the workflow header.
+- `ci-with-sonar-*.yml` bundles require only `DOPPLER_TOKEN`; they fetch `SONAR_TOKEN` and `SONAR_HOST_URL` at runtime from Doppler (`sonar/prd` by default) and run an inline `sonar-scan` job. `test-callers.yml` uses `__test_skip_sonar_call: true` for these bundles.
 - `docker-build.yml` exposes optional hardening inputs (`generate-sbom`, `generate-provenance`, `sign-image`) that all default to `false`. When enabled, each spawns a dedicated job that delegates to `actions/supply-chain-attest` and only runs when the image was actually pushed on the default branch with a resolved digest. Keep those defaults off so updates to `@v1` never change the behavior of existing consumers.
 - `docker-release.yml` and `actions/supply-chain-attest` reference the image by digest (`${image}@${digest}`) for SBOM, cosign, and attestation steps. Keep that pattern — signing/attesting by tag is racy.
 - `release.yml` parses PR labels with `jq` against `${GITHUB_EVENT_PATH}` and derives the next version from the remote tag list. If you change the labeling scheme, also update `.github/PULL_REQUEST_TEMPLATE.md`, `docs/CONTRIBUTING.md`, `AGENTS.md`, and this file.

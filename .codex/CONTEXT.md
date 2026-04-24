@@ -28,8 +28,8 @@
 - GitHub issue `#35` (Phase 14: Branch protection for `main` + stale branch cleanup) is closed.
 - GitHub issue `#36` (Phase 15: Dependabot auto-merge for low-risk bumps) is closed.
 - GitHub issue `#37` (Phase 16: Workflow security self-scan with zizmor + shellcheck) is closed.
-- GitHub issue `#38` (Phase 17: Integration drift detector against real consumer repos) is open; manual dispatch and drift-issue acceptance are validated, first scheduled nightly run is pending.
-- Last tracker sync: `2026-04-23`.
+- GitHub issue `#38` (Phase 17: Integration drift detector against real consumer repos) is open; manual dispatch acceptance is validated, with `drift` and `sonar-missing` issue paths now documented.
+- Last tracker sync: `2026-04-24`.
 - Tracker state is sourced from GitHub issue status; branch contents in this workspace are the source of truth for code edits.
 
 ## Implemented capabilities (current state)
@@ -38,6 +38,9 @@
   - `.github/workflows/ci-go.yml`
   - `.github/workflows/ci-node.yml`
   - `.github/workflows/ci-python.yml`
+  - `.github/workflows/ci-with-sonar-go.yml`
+  - `.github/workflows/ci-with-sonar-node.yml`
+  - `.github/workflows/ci-with-sonar-python.yml`
   - `.github/workflows/ci-terraform.yml`
   - `.github/workflows/docker-build.yml`
   - `.github/workflows/docker-release.yml`
@@ -66,7 +69,7 @@
 - Internal reusable-workflow self-test harness:
   - `.github/workflows/test-callers.yml`
   - triggers on `pull_request` to `main` and `push` to `main`
-  - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, and `ci-terraform.yml` via relative `uses:`
+  - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-{go,node,python}.yml`, and `ci-terraform.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python,terraform}`
 - Internal release automation workflow:
   - triggers on `push` to `main`
@@ -88,7 +91,10 @@
   - `.github/workflows/integration-smoke.yml`
   - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
   - checks selected real consumers by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
-  - opens a `drift`-labeled issue in this repository on failure
+  - enforces Sonar presence (`sonar-scan.yml` or `ci-with-sonar-*`) unless `.github/SONAR_EXEMPT` exists
+  - opens idempotent `drift` or `sonar-missing` issues in this repository on failure
+- Consumer branch-protection helper:
+  - `scripts/enforce-sonar-branch-protection.sh` appends required Sonar status-check contexts without replacing existing required checks
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, and `sign-image` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance logic
@@ -131,5 +137,5 @@
 - Release workflow behavior requires GitHub-hosted execution for full end-to-end validation.
 - Scheduled workflow acceptance (`on.schedule`) cannot be force-triggered via API and must be confirmed after the next cron window.
 - Branch protection for `main` requires pull requests and strict required status checks.
-- Current required status-check contexts are: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`.
+- Current required status-check contexts include `lint`, language/Terraform caller contexts (including `ci-with-sonar-*` caller checks), `zizmor`, and `shellcheck`.
 - Required approving reviews are intentionally set to `0` for solo-maintainer operation (self-approval is not possible on own PRs).

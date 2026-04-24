@@ -1,0 +1,156 @@
+# =============================================================================
+# ci-with-sonar-python.yml — Reusable Python CI bundle with SonarQube enforcement
+# =============================================================================
+# Runs ci-python and a SonarQube scan in parallel. Sonar credentials are fetched
+# at runtime from Doppler using a required DOPPLER_TOKEN secret.
+#
+# Example caller:
+#   jobs:
+#     ci:
+#       uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-python.yml@v1
+#       secrets:
+#         DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+# =============================================================================
+
+name: ci-with-sonar-python
+
+on:
+  workflow_call:
+    inputs:
+      python-version:
+        description: "Python version to install."
+        type: string
+        required: false
+        default: "3.12"
+      dependency-file:
+        description: "Primary dependency file. Supports requirements.txt, pyproject.toml, and poetry.lock via detection."
+        type: string
+        required: false
+        default: "requirements.txt"
+      lint-paths:
+        description: "Space-separated paths passed to ruff."
+        type: string
+        required: false
+        default: "."
+      test-paths:
+        description: "Space-separated paths passed to pytest."
+        type: string
+        required: false
+        default: "tests/"
+      coverage-min:
+        description: "Minimum pytest coverage percentage."
+        type: number
+        required: false
+        default: 0
+      run-audit:
+        description: "Run pip-audit dependency vulnerability scan."
+        type: boolean
+        required: false
+        default: true
+      sonar-working-directory:
+        description: "Directory containing source code and sonar-project.properties."
+        type: string
+        required: false
+        default: "."
+      sonar-quality-gate-timeout-minutes:
+        description: "Maximum time in minutes to wait for quality gate status."
+        type: number
+        required: false
+        default: 5
+      sonar-extra-scan-args:
+        description: "Extra arguments passed to SonarQube scanner."
+        type: string
+        required: false
+        default: ""
+      doppler-project:
+        description: "Doppler project containing SONAR_TOKEN and SONAR_HOST_URL."
+        type: string
+        required: false
+        default: "sonar"
+      doppler-config:
+        description: "Doppler config name to read secrets from."
+        type: string
+        required: false
+        default: "prd"
+      __test_skip_sonar_call:
+        description: "Internal: skip sonar job in test-callers to avoid external secret fetches."
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      DOPPLER_TOKEN:
+        description: "Read-only Doppler service token used to fetch Sonar credentials."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    uses: ./.github/workflows/ci-python.yml
+    with:
+      python-version: ${{ inputs.python-version }}
+      dependency-file: ${{ inputs.dependency-file }}
+      lint-paths: ${{ inputs.lint-paths }}
+      test-paths: ${{ inputs.test-paths }}
+      coverage-min: ${{ inputs.coverage-min }}
+      run-audit: ${{ inputs.run-audit }}
+
+  sonar-scan:
+    name: sonar-scan
+    if: ${{ !inputs.__test_skip_sonar_call }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
+
+      - name: Fetch Sonar credentials from Doppler
+        shell: bash
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: ${{ inputs.doppler-project }}
+          DOPPLER_CONFIG: ${{ inputs.doppler-config }}
+        run: |
+          set -euo pipefail
+
+          sonar_token="$(doppler secrets get SONAR_TOKEN --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}")"
+          sonar_host_url="$(doppler secrets get SONAR_HOST_URL --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}")"
+
+          if [ -z "${sonar_token}" ] || [ -z "${sonar_host_url}" ]; then
+            echo "::error::Doppler secret fetch returned empty SONAR_TOKEN or SONAR_HOST_URL."
+            exit 1
+          fi
+
+          echo "::add-mask::${sonar_token}"
+          echo "::add-mask::${sonar_host_url}"
+          {
+            echo "SONAR_TOKEN=${sonar_token}"
+            echo "SONAR_HOST_URL=${sonar_host_url}"
+          } >> "${GITHUB_ENV}"
+
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7.1.0
+        with:
+          projectBaseDir: ${{ inputs.sonar-working-directory }}
+          args: ${{ inputs.sonar-extra-scan-args }}
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+
+      - name: SonarQube quality gate
+        timeout-minutes: ${{ inputs.sonar-quality-gate-timeout-minutes }}
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
+        with:
+          scanMetadataReportFile: ${{ inputs.sonar-working-directory }}/.scannerwork/report-task.txt
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}

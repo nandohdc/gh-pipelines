@@ -20,12 +20,18 @@ Notes:
 - Added Dependabot coverage for `/actions/setup-terraform`.
 - Added internal Dependabot auto-merge workflow for patch/minor updates (`.github/workflows/dependabot-auto-merge.yml`) with maintainer-review fallback for majors.
 - Added nightly integration canary workflow (`integration-smoke.yml`) and consumer runbook (`docs/INTEGRATION_CONSUMERS.md`) for drift detection against real repositories.
+- Added `ci-with-sonar-go.yml`, `ci-with-sonar-node.yml`, and `ci-with-sonar-python.yml` reusable bundle workflows that pair language CI with Sonar scan/gate using Doppler-fetched secrets.
+- Added Sonar bundle caller examples in `examples/ci-with-sonar-go.yml`, `examples/ci-with-sonar-node.yml`, and `examples/ci-with-sonar-python.yml`.
+- Added `scripts/enforce-sonar-branch-protection.sh` to append Sonar required-check contexts without replacing existing branch-protection checks.
 
 ### Changed
 
 - Validated no-release-label behavior in release automation (`chore(ci): validate no-label release behavior`).
 - Protected `main` with PR + required checks, enabled auto-delete head branches, and cleaned up stale merged branches.
 - Documented Dependabot policy in `docs/CONTRIBUTING.md`: patch/minor auto-merge on green required checks; majors require maintainer review.
+- Updated `integration-smoke.yml` to enforce Sonar presence (`sonar-scan` or `ci-with-sonar-*` or `.github/SONAR_EXEMPT`), open `sonar-missing` issues when absent, and deduplicate both `sonar-missing` and `drift` issues by title.
+- Expanded `test-callers.yml` coverage to include all new `ci-with-sonar-*` bundle workflows via internal `__test_skip_sonar_call` toggles.
+- Updated security and usage docs for Doppler-backed Sonar credential flow (`DOPPLER_TOKEN`) in bundle workflows.
 
 ## [v1.5.2] - 2026-04-22
 

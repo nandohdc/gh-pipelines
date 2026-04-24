@@ -120,6 +120,26 @@ jobs:
           echo "Rewrote ${matches_before_count} references to gh-pipelines @main in ${PWD}/.github/workflows."
           echo "Remaining gh-pipelines references after rewrite: ${matches_after_count}"
 
+      - name: Require Sonar coverage or exemption
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd consumer
+
+          if [ -f ".github/SONAR_EXEMPT" ]; then
+            echo "SONAR_EXEMPT marker found; skipping Sonar presence enforcement."
+            exit 0
+          fi
+
+          if rg -n --no-heading 'uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/(sonar-scan|ci-with-sonar-(go|node|python))\.yml@' .github/workflows >/dev/null; then
+            echo "Detected Sonar integration reference in consumer workflows."
+            exit 0
+          fi
+
+          echo "::error::No sonar-scan.yml or ci-with-sonar-* workflow reference found and no .github/SONAR_EXEMPT marker exists."
+          touch "${RUNNER_TEMP}/sonar-missing"
+          exit 1
+
       - name: Lint rewritten consumer workflows
         shell: bash
         run: |
@@ -128,7 +148,7 @@ jobs:
           mapfile -t workflow_files < <(find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | sort)
           actionlint -shellcheck= "${workflow_files[@]}"
 
-      - name: Open drift issue on failure
+      - name: Open issue on failure
         if: failure()
         shell: bash
         env:
@@ -136,15 +156,38 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           CONSUMER_ID: ${{ matrix.id }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          SONAR_MISSING_MARKER: ${{ runner.temp }}/sonar-missing
         run: |
           set -euo pipefail
 
-          if ! gh label list --repo "${REPOSITORY}" --limit 200 --json name --jq '.[].name' | grep -qx 'drift'; then
-            gh label create drift --repo "${REPOSITORY}" --color D93F0B --description "Detected integration drift against consumer canaries"
+          issue_label="drift"
+          issue_title="Integration drift: ${CONSUMER_ID}"
+          issue_color="D93F0B"
+          issue_description="Detected integration drift against consumer canaries"
+
+          issue_body="$(printf 'Integration smoke failed while validating %s.\n\nRun: %s\n' "${CONSUMER_ID}" "${RUN_URL}")"
+
+          if [ -f "${SONAR_MISSING_MARKER}" ]; then
+            issue_label="sonar-missing"
+            issue_title="Sonar missing: ${CONSUMER_ID}"
+            issue_color="B60205"
+            issue_description="Detected missing Sonar coverage in integration canary consumers"
+
+            issue_body="$(printf 'Integration smoke detected missing Sonar coverage for %s.\n\nExpected one of:\n- uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@...\n- uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-<lang>.yml@...\n- .github/SONAR_EXEMPT marker at repository root\n\nRun: %s\n' "${CONSUMER_ID}" "${RUN_URL}")"
+          fi
+
+          if ! gh label list --repo "${REPOSITORY}" --limit 200 --json name --jq '.[].name' | grep -qx "${issue_label}"; then
+            gh label create "${issue_label}" --repo "${REPOSITORY}" --color "${issue_color}" --description "${issue_description}"
+          fi
+
+          existing_issue_number="$(gh issue list --repo "${REPOSITORY}" --state open --limit 200 --json number,title | jq -r --arg title "${issue_title}" '.[] | select(.title == $title) | .number' | head -n 1)"
+          if [ -n "${existing_issue_number}" ]; then
+            echo "::notice::Open issue #${existing_issue_number} already exists for ${issue_title}; skipping create."
+            exit 0
           fi
 
           gh issue create \
             --repo "${REPOSITORY}" \
-            --label drift \
-            --title "Integration drift: ${CONSUMER_ID} · $(date -u +%F)" \
-            --body "${RUN_URL}"
+            --label "${issue_label}" \
+            --title "${issue_title}" \
+            --body "${issue_body}"

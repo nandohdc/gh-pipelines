@@ -17,14 +17,39 @@ Selection criteria used:
 
 ## Smoke Implementation (Current)
 
-`integration-smoke.yml` currently runs the parse-based fallback from issue `#38`:
+`integration-smoke.yml` runs a parse-based integration gate against each canary:
 
 1. Clone the selected consumer at `main`.
 2. Rewrite any `uses: nandohdc/gh-pipelines/.github/workflows/...@<ref>` references to `@main`.
-3. Run `actionlint` on the rewritten workflow set.
-4. If validation fails, create a `drift` issue in `gh-pipelines` linking to the failing run.
+3. Require at least one Sonar integration path:
+   - `sonar-scan.yml`, or
+   - a `ci-with-sonar-<lang>.yml` bundle, or
+   - `.github/SONAR_EXEMPT` marker file at repo root.
+4. Run `actionlint` on the rewritten workflow set.
+5. On failure, open an issue in `gh-pipelines` with idempotent title-based dedup:
+   - `sonar-missing` label for missing Sonar coverage
+   - `drift` label for all other parse/lint failures
 
 The consumer repositories are private, so the workflow requires `INTEGRATION_PAT` with read access to both canary repos.
+
+## Sonar Bundle Secret Model
+
+Consumer repos using `ci-with-sonar-*` should only store:
+
+- `DOPPLER_TOKEN` (read-only service token scoped to Doppler project `sonar`, config `prd`)
+
+The bundles fetch `SONAR_TOKEN` and `SONAR_HOST_URL` from Doppler at runtime, mask both values in logs, and export them only for the active workflow run.
+
+## Branch Protection Helper
+
+Use `scripts/enforce-sonar-branch-protection.sh` from this repository to append the Sonar required-check context without replacing existing required checks:
+
+```bash
+./scripts/enforce-sonar-branch-protection.sh nandohdc/financial-events-ingestion-api "ci / sonar-scan" main
+./scripts/enforce-sonar-branch-protection.sh nandohdc/finance-system "ci / sonar-scan" main
+```
+
+If the context already exists, the script no-ops.
 
 ## Add Or Rotate Consumers
 
@@ -40,3 +65,4 @@ The consumer repositories are private, so the workflow requires `INTEGRATION_PAT
 - Secret name: `INTEGRATION_PAT`.
 - Minimum scope: repository read access to canary repos.
 - Rotation cadence: at least every 90 days or immediately after a token exposure event.
+- For consumer Sonar integration, rotate each repository `DOPPLER_TOKEN` at least every 90 days.
