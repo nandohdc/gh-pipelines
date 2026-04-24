@@ -1,0 +1,30 @@
+# =============================================================================
+# Example: Node.js service CI + Sonar bundle caller workflow
+# =============================================================================
+# Copy this file to your Node.js repository at .github/workflows/ci.yml
+# and provision only one secret: DOPPLER_TOKEN.
+# =============================================================================
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-node.yml@v1
+    with:
+      node-version: "20"
+      package-manager: "npm"
+      lint-script: "lint"
+      test-script: "test:coverage"
+      coverage-min: 70
+      run-audit: true
+      sonar-working-directory: "."
+      sonar-quality-gate-timeout-minutes: 5
+      sonar-extra-scan-args: ""
+      doppler-project: "sonar"
+      doppler-config: "prd"
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}

@@ -43,6 +43,48 @@ jobs:
       test-paths: tests/fixtures/python/tests
       run-audit: false
 
+  test-ci-with-sonar-go:
+    name: test ci-with-sonar-go caller
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-with-sonar-go.yml
+    with:
+      working-directory: tests/fixtures/go
+      coverage-min: "0"
+      __test_skip_sonar_call: true
+    secrets:
+      DOPPLER_TOKEN: ${{ github.token }}
+
+  test-ci-with-sonar-node:
+    name: test ci-with-sonar-node caller
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-with-sonar-node.yml
+    with:
+      working-directory: tests/fixtures/node
+      package-manager: npm
+      run-audit: false
+      __test_skip_sonar_call: true
+    secrets:
+      DOPPLER_TOKEN: ${{ github.token }}
+
+  test-ci-with-sonar-python:
+    name: test ci-with-sonar-python caller
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/ci-with-sonar-python.yml
+    with:
+      dependency-file: tests/fixtures/python/requirements.txt
+      lint-paths: tests/fixtures/python/src tests/fixtures/python/tests
+      test-paths: tests/fixtures/python/tests
+      run-audit: false
+      __test_skip_sonar_call: true
+    secrets:
+      DOPPLER_TOKEN: ${{ github.token }}
+
   test-ci-terraform:
     name: test ci-terraform caller
     uses: ./.github/workflows/ci-terraform.yml

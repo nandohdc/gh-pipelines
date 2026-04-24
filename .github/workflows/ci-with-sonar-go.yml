@@ -1,0 +1,204 @@
+# =============================================================================
+# ci-with-sonar-go.yml — Reusable Go CI bundle with SonarQube enforcement
+# =============================================================================
+# Runs ci-go and a SonarQube scan in parallel. Sonar credentials are fetched at
+# runtime from Doppler using a required DOPPLER_TOKEN secret.
+#
+# Example caller:
+#   jobs:
+#     ci:
+#       uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-go.yml@v1
+#       secrets:
+#         DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+# =============================================================================
+
+name: ci-with-sonar-go
+
+on:
+  workflow_call:
+    inputs:
+      go-version:
+        description: "Go version to install."
+        type: string
+        required: false
+        default: "1.26.2"
+      working-directory:
+        description: "Directory containing the Go module to lint and test."
+        type: string
+        required: false
+        default: "."
+      golangci-lint-version:
+        description: "golangci-lint version."
+        type: string
+        required: false
+        default: "v1.64.8"
+      coverage-min:
+        description: "Minimum unit-test coverage percentage."
+        type: string
+        required: false
+        default: "65.0"
+      coverage-packages:
+        description: "Space-separated package list for coverage. Empty = all."
+        type: string
+        required: false
+        default: ""
+      run-integration:
+        description: "Run integration tests (requires Testcontainers / Docker)."
+        type: boolean
+        required: false
+        default: false
+      integration-tags:
+        description: "Build tags for integration tests."
+        type: string
+        required: false
+        default: "integration"
+      integration-packages:
+        description: "Package pattern for integration tests."
+        type: string
+        required: false
+        default: "./internal/..."
+      run-contract:
+        description: "Run contract checks (make contract)."
+        type: boolean
+        required: false
+        default: false
+      run-import-direction:
+        description: "Run import direction checks (scripts/check-import-direction.sh)."
+        type: boolean
+        required: false
+        default: false
+      run-k8s-validate:
+        description: "Validate Kubernetes manifests with kubectl dry-run."
+        type: boolean
+        required: false
+        default: false
+      k8s-manifests-dir:
+        description: "Path to Kubernetes manifest directory."
+        type: string
+        required: false
+        default: "deploy/kubernetes"
+      run-prometheus-validate:
+        description: "Validate Prometheus rule files."
+        type: boolean
+        required: false
+        default: false
+      prometheus-rules-dir:
+        description: "Path to Prometheus rules directory."
+        type: string
+        required: false
+        default: "deploy/prometheus"
+      sonar-working-directory:
+        description: "Directory containing source code and sonar-project.properties."
+        type: string
+        required: false
+        default: "."
+      sonar-quality-gate-timeout-minutes:
+        description: "Maximum time in minutes to wait for quality gate status."
+        type: number
+        required: false
+        default: 5
+      sonar-extra-scan-args:
+        description: "Extra arguments passed to SonarQube scanner."
+        type: string
+        required: false
+        default: ""
+      doppler-project:
+        description: "Doppler project containing SONAR_TOKEN and SONAR_HOST_URL."
+        type: string
+        required: false
+        default: "sonar"
+      doppler-config:
+        description: "Doppler config name to read secrets from."
+        type: string
+        required: false
+        default: "prd"
+      __test_skip_sonar_call:
+        description: "Internal: skip sonar job in test-callers to avoid external secret fetches."
+        type: boolean
+        required: false
+        default: false
+    secrets:
+      DOPPLER_TOKEN:
+        description: "Read-only Doppler service token used to fetch Sonar credentials."
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    name: ci
+    uses: ./.github/workflows/ci-go.yml
+    with:
+      go-version: ${{ inputs.go-version }}
+      working-directory: ${{ inputs.working-directory }}
+      golangci-lint-version: ${{ inputs.golangci-lint-version }}
+      coverage-min: ${{ inputs.coverage-min }}
+      coverage-packages: ${{ inputs.coverage-packages }}
+      run-integration: ${{ inputs.run-integration }}
+      integration-tags: ${{ inputs.integration-tags }}
+      integration-packages: ${{ inputs.integration-packages }}
+      run-contract: ${{ inputs.run-contract }}
+      run-import-direction: ${{ inputs.run-import-direction }}
+      run-k8s-validate: ${{ inputs.run-k8s-validate }}
+      k8s-manifests-dir: ${{ inputs.k8s-manifests-dir }}
+      run-prometheus-validate: ${{ inputs.run-prometheus-validate }}
+      prometheus-rules-dir: ${{ inputs.prometheus-rules-dir }}
+
+  sonar-scan:
+    name: sonar-scan
+    if: ${{ !inputs.__test_skip_sonar_call }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Doppler CLI
+        uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
+
+      - name: Fetch Sonar credentials from Doppler
+        shell: bash
+        env:
+          DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+          DOPPLER_PROJECT: ${{ inputs.doppler-project }}
+          DOPPLER_CONFIG: ${{ inputs.doppler-config }}
+        run: |
+          set -euo pipefail
+
+          sonar_token="$(doppler secrets get SONAR_TOKEN --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}")"
+          sonar_host_url="$(doppler secrets get SONAR_HOST_URL --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}")"
+
+          if [ -z "${sonar_token}" ] || [ -z "${sonar_host_url}" ]; then
+            echo "::error::Doppler secret fetch returned empty SONAR_TOKEN or SONAR_HOST_URL."
+            exit 1
+          fi
+
+          echo "::add-mask::${sonar_token}"
+          echo "::add-mask::${sonar_host_url}"
+          {
+            echo "SONAR_TOKEN=${sonar_token}"
+            echo "SONAR_HOST_URL=${sonar_host_url}"
+          } >> "${GITHUB_ENV}"
+
+      - name: SonarQube scan
+        uses: SonarSource/sonarqube-scan-action@299e4b793aaa83bf2aba7c9c14bedbb485688ec4 # v7.1.0
+        with:
+          projectBaseDir: ${{ inputs.sonar-working-directory }}
+          args: ${{ inputs.sonar-extra-scan-args }}
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+
+      - name: SonarQube quality gate
+        timeout-minutes: ${{ inputs.sonar-quality-gate-timeout-minutes }}
+        uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
+        with:
+          scanMetadataReportFile: ${{ inputs.sonar-working-directory }}/.scannerwork/report-task.txt
+        env:
+          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
+          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}

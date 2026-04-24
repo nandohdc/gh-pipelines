@@ -160,6 +160,66 @@ jobs:
 
 ---
 
+### ci-with-sonar-go.yml / ci-with-sonar-node.yml / ci-with-sonar-python.yml — Language CI + Sonar Bundle
+
+Reusable bundle workflows that run language CI and SonarQube in parallel. Sonar credentials are fetched per-run from Doppler, so consumer repositories only store `DOPPLER_TOKEN`.
+
+**Trigger:** `workflow_call`
+
+Each bundle re-declares every input from its underlying workflow:
+
+| Bundle workflow | Underlying CI workflow |
+| --- | --- |
+| `ci-with-sonar-go.yml` | `ci-go.yml` |
+| `ci-with-sonar-node.yml` | `ci-node.yml` |
+| `ci-with-sonar-python.yml` | `ci-python.yml` |
+
+#### Additional Inputs (all bundles)
+
+| Input | Type | Required | Default | Description |
+| --- | --- | --- | --- | --- |
+| `sonar-working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
+| `sonar-quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
+| `sonar-extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
+| `doppler-project` | string | no | `sonar` | Doppler project containing `SONAR_TOKEN` and `SONAR_HOST_URL` |
+| `doppler-config` | string | no | `prd` | Doppler config name |
+| `__test_skip_sonar_call` | boolean | no | `false` | Internal test harness escape hatch; skip Sonar job when `true` |
+
+#### Secrets
+
+| Secret | Required | Description |
+| --- | --- | --- |
+| `DOPPLER_TOKEN` | **yes** | Read-only Doppler service token used to fetch Sonar credentials at runtime |
+
+#### Behavior
+
+1. `ci` job calls the underlying language workflow (`ci-go.yml`, `ci-node.yml`, or `ci-python.yml`) using local relative refs.
+2. `sonar-scan` job installs `dopplerhq/cli-action`, fetches and masks `SONAR_TOKEN` / `SONAR_HOST_URL`, then runs Sonar scan + quality gate.
+3. Sonar status-check context in consumer repositories is expected to appear as `ci / sonar-scan`.
+
+#### Example
+
+```yaml
+name: ci
+on: [push, pull_request]
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-go.yml@v1
+    with:
+      go-version: "1.26.2"
+      coverage-min: "65.0"
+      sonar-working-directory: "."
+      sonar-quality-gate-timeout-minutes: 5
+      sonar-extra-scan-args: ""
+      doppler-project: "sonar"
+      doppler-config: "prd"
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
+```
+
+---
+
 ### ci-terraform.yml — Terraform CI Pipeline
 
 Reusable CI workflow for Terraform projects with formatting checks, validation, planning, and optional IaC security audit.

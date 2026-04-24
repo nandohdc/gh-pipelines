@@ -24,3 +24,14 @@ When reporting, include:
 
 - `v1` line: actively maintained and receives fixes
 - older majors: unsupported
+
+## Sonar Credential Handling (Doppler-backed bundles)
+
+The `ci-with-sonar-*` bundle workflows fetch `SONAR_TOKEN` and `SONAR_HOST_URL` from Doppler at runtime.
+Consumer repositories should store only a read-only `DOPPLER_TOKEN` secret.
+
+Rotation and leak response policy:
+
+1. Rotate each consumer repository `DOPPLER_TOKEN` at least every 90 days.
+2. If a `DOPPLER_TOKEN` is exposed, immediately revoke and re-issue that token in Doppler.
+3. If Sonar credentials themselves are exposed, rotate `SONAR_TOKEN` in SonarQube and update Doppler `sonar/prd`.
