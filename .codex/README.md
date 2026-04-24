@@ -14,10 +14,10 @@ Current baseline:
 - Integration drift detection is available via `.github/workflows/integration-smoke.yml` and `docs/INTEGRATION_CONSUMERS.md`, including `sonar-missing` issue signaling.
 - Repository governance assets are present in `.github/ISSUE_TEMPLATE/`, `.github/PULL_REQUEST_TEMPLATE.md`, `.github/CODEOWNERS`, `SECURITY.md`, and `CHANGELOG.md`.
 - Tracker snapshot (synced `2026-04-24`):
-  - Closed phases/issues: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`, `#11`, `#33`, `#34`, `#35`, `#36`, `#37`
-  - Open phase issues: `#38` (manual acceptance validated; drift and sonar-missing issue paths now documented)
+  - Closed phases/issues: `#1`, `#2`, `#3`, `#4`, `#6`, `#7`, `#8`, `#9`, `#10`, `#11`, `#33`, `#34`, `#35`, `#36`, `#37`, `#62`
+  - Open phase issues: `#38` (manual acceptance validated; canary scope reduced to `financial-events-ingestion-api`; next scheduled post-scope-change run pending)
 - Release model is semver tags plus floating major (`v1.x.y` and `v1`), executed on pushes to `main` based on labels from the merged PR linked to the pushed commit.
-- `main` branch protection requires PR flow + strict required status checks; required approving reviews are set to `0` for solo-maintainer merges.
+- `main` branch protection requires PR flow + strict required status checks (current contexts: `lint`, language/Terraform caller checks, `zizmor`, `shellcheck`, and `ci-with-sonar-*` caller lint checks); required approving reviews are set to `0` for solo-maintainer merges.
 
 Files:
 

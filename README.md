@@ -85,16 +85,19 @@ Pin to the major version (`@v1`) to automatically receive backward-compatible up
 ## Repository Layout
 
 ```
-.github/workflows/    Reusable workflows (workflow_call triggers)
+.github/workflows/    Reusable workflows (workflow_call) + internal workflows (lint, test-callers, release, security-self-scan, dependabot-auto-merge, integration-smoke)
 actions/              Composite actions for shared steps
-docs/                 Usage and contribution guides
+docs/                 Usage, contribution, and integration-canary guides
 examples/             Copy-paste caller workflow examples
+scripts/              Helper scripts for consumer onboarding (for example, enforce-sonar-branch-protection.sh)
+tests/fixtures/       Minimal fixtures exercised by the internal regression harness (go, node, python, terraform)
 ```
 
 ## Documentation
 
 - [Usage Guide](docs/USAGE.md) — Detailed reference for every workflow and action
 - [Contributing Guide](docs/CONTRIBUTING.md) — How to add or modify workflows
+- [Integration Consumers](docs/INTEGRATION_CONSUMERS.md) — Canary registry for the scheduled integration-smoke probe
 
 ## License
 

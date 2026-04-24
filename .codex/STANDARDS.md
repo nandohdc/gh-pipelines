@@ -82,7 +82,7 @@ These standards are mandatory for Codex changes in this repository.
 
 - Keep `main` protected with pull-request flow and required status checks.
 - Keep strict status checks enabled so required checks must be green on the latest merge base.
-- Keep required status-check contexts aligned with workflow job names (`lint`, caller matrix checks, `zizmor`, `shellcheck`).
+- Keep required status-check contexts aligned with workflow job names (current `main` contexts: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`, `test ci-with-sonar-go caller / ci / lint`, `test ci-with-sonar-node caller / ci / lint`, `test ci-with-sonar-python caller / ci / lint`).
 - For this solo-maintainer repository, keep required approvals disabled (`required_approving_review_count=0`) to avoid self-approval deadlocks.
 
 ## Release standards

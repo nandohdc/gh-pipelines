@@ -48,7 +48,7 @@ Use this checklist before finishing any Codex task in this repository.
   - `workflow_dispatch` success path on `main`,
   - controlled failure path opens `drift` or `sonar-missing` issues in this repository as expected,
   - first scheduled run after merge (`0 7 * * *`) is observed green.
-- If touching `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep required check contexts aligned (`lint`, caller matrix checks, `zizmor`, `shellcheck`).
+- If touching `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep required check contexts aligned (current `main` contexts: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`, `test ci-with-sonar-go caller / ci / lint`, `test ci-with-sonar-node caller / ci / lint`, `test ci-with-sonar-python caller / ci / lint`).
 - If behavior changed (not just docs/style), validate from a consumer repo using a branch-pinned `uses:` reference.
 
 ## Documentation and tracker sync
