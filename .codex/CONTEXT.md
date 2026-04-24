@@ -28,7 +28,8 @@
 - GitHub issue `#35` (Phase 14: Branch protection for `main` + stale branch cleanup) is closed.
 - GitHub issue `#36` (Phase 15: Dependabot auto-merge for low-risk bumps) is closed.
 - GitHub issue `#37` (Phase 16: Workflow security self-scan with zizmor + shellcheck) is closed.
-- GitHub issue `#38` (Phase 17: Integration drift detector against real consumer repos) is open; manual dispatch and drift-issue acceptance are validated, first scheduled nightly run is pending.
+- GitHub issue `#38` (Phase 17: Integration drift detector against real consumer repos) is open; manual dispatch and drift-issue acceptance are validated; the 2026-04-24 scheduled run failed due prior `finance-system` scope, and canary scope was reduced to `financial-events-ingestion-api`.
+- GitHub issue `#62` (Sonar enforcement via bundles + drift detection) is closed; shipped via `v1.6.0` and `v1.6.1`.
 - Last tracker sync: `2026-04-24`.
 - Tracker state is sourced from GitHub issue status; branch contents in this workspace are the source of truth for code edits.
 
@@ -90,8 +91,8 @@
 - Internal integration drift workflow:
   - `.github/workflows/integration-smoke.yml`
   - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
-  - checks selected real consumers by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
-  - opens a `drift`-labeled issue in this repository on failure
+  - checks active canary consumer `nandohdc/financial-events-ingestion-api` by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
+  - opens a `drift`- or `sonar-missing`-labeled issue in this repository on failure
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, and `sign-image` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance logic
@@ -134,5 +135,5 @@
 - Release workflow behavior requires GitHub-hosted execution for full end-to-end validation.
 - Scheduled workflow acceptance (`on.schedule`) cannot be force-triggered via API and must be confirmed after the next cron window.
 - Branch protection for `main` requires pull requests and strict required status checks.
-- Current required status-check contexts include `lint`, language/Terraform caller contexts (including `ci-with-sonar-*` caller checks), `zizmor`, and `shellcheck`.
+- Current required status-check contexts on `main` are `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`, `test ci-with-sonar-go caller / ci / lint`, `test ci-with-sonar-node caller / ci / lint`, and `test ci-with-sonar-python caller / ci / lint`.
 - Required approving reviews are intentionally set to `0` for solo-maintainer operation (self-approval is not possible on own PRs).

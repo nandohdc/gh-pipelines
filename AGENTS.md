@@ -68,9 +68,9 @@ Release tags are the delivery mechanism:
   - release serialization and idempotent tag handling.
 - If you changed `integration-smoke.yml`, verify:
   - `workflow_dispatch` succeeds on `main` (for example `consumer=all`),
-  - controlled failing path opens a `drift`-labeled issue,
+  - controlled failing path opens a `drift`- or `sonar-missing`-labeled issue,
   - first scheduled run after merge (`cron: 0 7 * * *`) is green.
-- If you changed `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep protected required-check contexts aligned (currently includes `lint`, existing language/Terraform caller contexts, new `ci-with-sonar-*` caller contexts, `zizmor`, and `shellcheck`).
+- If you changed `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep protected required-check contexts aligned (current `main` contexts: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`, `test ci-with-sonar-go caller / ci / lint`, `test ci-with-sonar-node caller / ci / lint`, `test ci-with-sonar-python caller / ci / lint`).
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
