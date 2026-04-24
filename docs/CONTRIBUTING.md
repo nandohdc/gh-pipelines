@@ -120,7 +120,8 @@ actionlint .github/workflows/*.yml
 ### Running Self-Tests
 
 This repository includes an internal workflow (`.github/workflows/test-callers.yml`) that calls
-`ci-go.yml`, `ci-node.yml`, and `ci-python.yml` against fixtures in `tests/fixtures/`.
+`ci-go.yml`, `ci-node.yml`, `ci-python.yml`, and the `ci-with-sonar-*` bundles against fixtures in
+`tests/fixtures/`.
 
 - `tests/fixtures/go/`: minimal Go module used by `ci-go`.
 - `tests/fixtures/node/`: minimal Node package used by `ci-node`.
@@ -132,6 +133,9 @@ When adding inputs or behavior to any `ci-*` workflow:
 2. Keep fixture dependencies minimal and deterministic (`npm ci`, pinned/locked deps where applicable).
 3. Run `actionlint .github/workflows/*.yml` locally before opening a PR.
 4. Verify the `test-callers` workflow is green on your branch PR before merge.
+
+For Sonar bundle tests, `test-callers.yml` sets `__test_skip_sonar_call: true` and passes a dummy
+secret value to satisfy the required `DOPPLER_TOKEN` contract without making live Doppler calls.
 
 ### Integration Testing
 

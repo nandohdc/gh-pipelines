@@ -1,0 +1,30 @@
+# =============================================================================
+# Example: Python service CI + Sonar bundle caller workflow
+# =============================================================================
+# Copy this file to your Python repository at .github/workflows/ci.yml
+# and provision only one secret: DOPPLER_TOKEN.
+# =============================================================================
+
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-python.yml@v1
+    with:
+      python-version: "3.12"
+      dependency-file: "requirements.txt"
+      lint-paths: "."
+      test-paths: "tests/"
+      coverage-min: 80
+      run-audit: true
+      sonar-working-directory: "."
+      sonar-quality-gate-timeout-minutes: 5
+      sonar-extra-scan-args: ""
+      doppler-project: "sonar"
+      doppler-config: "prd"
+    secrets:
+      DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}

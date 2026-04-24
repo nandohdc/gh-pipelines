@@ -54,7 +54,7 @@ Release tags are the delivery mechanism:
 
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
-- If you changed `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage under `tests/fixtures/`.
+- If you changed `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-go.yml`, `ci-with-sonar-node.yml`, `ci-with-sonar-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage under `tests/fixtures/`.
 - If you changed `ci-terraform.yml` or `actions/setup-terraform`, validate Terraform fixture behavior (`fmt`, `init`, `validate`, `plan`) in `tests/fixtures/terraform/`.
 - If you changed `docker-build.yml` hardening inputs or `actions/supply-chain-attest`, verify both default-path behavior (all hardening flags false) and hardened-path behavior in a non-production repository.
 - If you changed `security-self-scan.yml` or `.zizmor.yml`, run:
@@ -70,7 +70,7 @@ Release tags are the delivery mechanism:
   - `workflow_dispatch` succeeds on `main` (for example `consumer=all`),
   - controlled failing path opens a `drift`-labeled issue,
   - first scheduled run after merge (`cron: 0 7 * * *`) is green.
-- If you changed `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep protected required-check contexts aligned (currently: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`).
+- If you changed `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep protected required-check contexts aligned (currently includes `lint`, existing language/Terraform caller contexts, new `ci-with-sonar-*` caller contexts, `zizmor`, and `shellcheck`).
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
 - If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).

@@ -13,6 +13,9 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
 | **Node CI** | `ci-node.yml` | Lint, test, coverage, and audit for Node.js services |
 | **Python CI** | `ci-python.yml` | Lint, test, coverage, and audit for Python services |
+| **Go CI + Sonar Bundle** | `ci-with-sonar-go.yml` | Go CI plus SonarQube scan/quality gate with Doppler-fetched secrets |
+| **Node CI + Sonar Bundle** | `ci-with-sonar-node.yml` | Node.js CI plus SonarQube scan/quality gate with Doppler-fetched secrets |
+| **Python CI + Sonar Bundle** | `ci-with-sonar-python.yml` | Python CI plus SonarQube scan/quality gate with Doppler-fetched secrets |
 | **Terraform CI** | `ci-terraform.yml` | Terraform fmt, validate, plan, and IaC audit |
 | **Docker Build** | `docker-build.yml` | Build + push images to GHCR* |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
