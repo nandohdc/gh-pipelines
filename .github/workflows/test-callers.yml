@@ -45,6 +45,9 @@ jobs:
 
   test-ci-with-sonar-go:
     name: test ci-with-sonar-go caller
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci-with-sonar-go.yml
     with:
       working-directory: tests/fixtures/go
@@ -55,6 +58,9 @@ jobs:
 
   test-ci-with-sonar-node:
     name: test ci-with-sonar-node caller
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci-with-sonar-node.yml
     with:
       working-directory: tests/fixtures/node
@@ -66,6 +72,9 @@ jobs:
 
   test-ci-with-sonar-python:
     name: test ci-with-sonar-python caller
+    permissions:
+      contents: read
+      pull-requests: read
     uses: ./.github/workflows/ci-with-sonar-python.yml
     with:
       dependency-file: tests/fixtures/python/requirements.txt
