@@ -75,7 +75,7 @@ These standards are mandatory for Codex changes in this repository.
 - If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.
 - If touching `.github/workflows/integration-smoke.yml`, validate:
   - `workflow_dispatch` success path on `main`,
-  - controlled failure path opens a `drift`-labeled issue in this repository,
+  - controlled failure path opens `drift` or `sonar-missing` issues in this repository as expected,
   - first scheduled run after merge (`0 7 * * *`) completes green.
 
 ## Branch protection standards
