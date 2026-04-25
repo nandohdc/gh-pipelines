@@ -97,7 +97,7 @@ jobs:
   # ---------------------------------------------------------------------------
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -141,7 +141,7 @@ jobs:
   # ---------------------------------------------------------------------------
   test:
     name: test
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -196,7 +196,7 @@ jobs:
   integration:
     name: integration
     if: inputs.run-integration
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -229,7 +229,7 @@ jobs:
   # ---------------------------------------------------------------------------
   vuln:
     name: vuln
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -257,7 +257,7 @@ jobs:
   validate-manifests:
     name: validate-manifests
     if: inputs.run-k8s-validate || inputs.run-prometheus-validate
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
