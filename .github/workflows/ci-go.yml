@@ -145,6 +145,8 @@ jobs:
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
+    env:
+      CGO_ENABLED: 1
     steps:
       - name: Checkout
         uses: actions/checkout@v6
