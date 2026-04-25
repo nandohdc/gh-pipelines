@@ -63,7 +63,7 @@ permissions:
 jobs:
   fmt:
     name: fmt
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -84,7 +84,7 @@ jobs:
 
   validate:
     name: validate
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -114,7 +114,7 @@ jobs:
     needs:
       - fmt
       - validate
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -162,7 +162,7 @@ jobs:
   audit:
     name: audit
     if: inputs.run-audit
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
