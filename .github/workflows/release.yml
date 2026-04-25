@@ -31,7 +31,7 @@ permissions:
 
 jobs:
   release:
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Determine release type from merged PR labels
         id: release_type
