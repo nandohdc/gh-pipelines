@@ -106,6 +106,7 @@ tests/fixtures/       Minimal fixtures exercised by the internal regression harn
 ## Documentation
 
 - [Usage Guide](docs/USAGE.md) — Detailed reference for every workflow and action
+- [Runner Selection](docs/USAGE.md#runner-selection) — Opt into self-hosted runners with `RUNNER_LABEL`
 - [Contributing Guide](docs/CONTRIBUTING.md) — How to add or modify workflows
 - [Integration Consumers](docs/INTEGRATION_CONSUMERS.md) — Canary registry for the scheduled integration-smoke probe
 

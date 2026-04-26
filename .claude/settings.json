@@ -7,20 +7,32 @@
       "Bash(uvx:*)",
       "Bash(ls:*)",
       "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(awk:*)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",
       "Bash(git branch:*)",
       "Bash(git show:*)",
       "Bash(git tag:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rev-parse:*)",
       "Bash(gh pr view:*)",
       "Bash(gh pr list:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr checks:*)",
       "Bash(gh run view:*)",
       "Bash(gh run list:*)",
+      "Bash(gh run watch:*)",
       "Bash(gh workflow view:*)",
       "Bash(gh workflow list:*)",
       "Bash(gh issue view:*)",
-      "Bash(gh issue list:*)"
+      "Bash(gh issue list:*)",
+      "Bash(gh release view:*)",
+      "Bash(gh release list:*)",
+      "Bash(gh variable list:*)",
+      "Bash(gh api -X GET:*)",
+      "Bash(gh api /repos/*)"
     ]
   }
 }
