@@ -25,6 +25,9 @@ Notes:
 
 ### Changed
 
+- Allowed every reusable and internal workflow to target a self-hosted runner via the optional `RUNNER_LABEL` repo/org variable (`runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`); defaults to `ubuntu-latest` when unset.
+- Installed `kubectl` in `actions/setup-doctl` so consumers running on minimal self-hosted runner images can apply manifests after loading kubeconfig.
+- Installed `build-essential` on demand in `ci-go.yml` jobs and enabled `CGO_ENABLED=1` so the `-race` detector and CGO-dependent builds work on minimal self-hosted runner images.
 - Validated no-release-label behavior in release automation (`chore(ci): validate no-label release behavior`).
 - Protected `main` with PR + required checks, enabled auto-delete head branches, and cleaned up stale merged branches.
 - Documented Dependabot policy in `docs/CONTRIBUTING.md`: patch/minor auto-merge on green required checks; majors require maintainer review.

@@ -4,6 +4,29 @@ Complete reference for every reusable workflow and composite action in this repo
 
 ---
 
+## Runner Selection
+
+Every reusable workflow declares `runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`. Consumers control runner targeting through a single repository or organization variable:
+
+| Variable | Scope | Effect |
+| --- | --- | --- |
+| `RUNNER_LABEL` (unset) | repo / org | Jobs run on GitHub-hosted `ubuntu-latest` (default). |
+| `RUNNER_LABEL=<label>` | repo / org | Jobs run on the self-hosted runner registered with that label. |
+
+Set the variable with:
+
+```bash
+gh variable set RUNNER_LABEL --body "arc-runners-myorg"
+```
+
+Notes for self-hosted runners:
+
+- The runner image must include the toolchains the workflow needs (Docker for `docker-build.yml`/`docker-release.yml`, `kubectl` for `helm-deploy.yml`, etc.). The `actions/setup-doctl` composite installs `kubectl` automatically; the Go CI workflow installs `build-essential` on demand for the `-race` detector.
+- `RUNNER_LABEL` overrides every job in the reusable workflow. Use a runner image broad enough for all the workflow's jobs.
+- The variable is only consumed by the workflows under `.github/workflows/`. Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) honor the same variable so the gh-pipelines repo itself can run on the same runner pool.
+
+---
+
 ## Reusable Workflows
 
 ### ci-go.yml — Go CI Pipeline
