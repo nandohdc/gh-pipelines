@@ -101,6 +101,7 @@ jobs:
       test-paths: ${{ inputs.test-paths }}
       coverage-min: ${{ inputs.coverage-min }}
       run-audit: ${{ inputs.run-audit }}
+      runner-label: ${{ inputs.runner-label }}
 
   sonar-scan:
     name: sonar-scan

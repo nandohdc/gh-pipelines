@@ -113,6 +113,7 @@ jobs:
       coverage-min: ${{ inputs.coverage-min }}
       run-audit: ${{ inputs.run-audit }}
       audit-level: ${{ inputs.audit-level }}
+      runner-label: ${{ inputs.runner-label }}
 
   sonar-scan:
     name: sonar-scan
