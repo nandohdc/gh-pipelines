@@ -67,6 +67,11 @@ on:
         type: boolean
         required: false
         default: false
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
     outputs:
       digest:
         description: "Image digest (sha256:...)."
@@ -85,7 +90,7 @@ permissions:
 jobs:
   build:
     name: build
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     outputs:
       digest: ${{ steps.build.outputs.digest }}
       tags: ${{ steps.meta.outputs.tags }}

@@ -74,6 +74,11 @@ on:
         type: string
         required: false
         default: ""
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
     secrets:
       digitalocean-token:
         description: "DigitalOcean Personal Access Token."
@@ -85,7 +90,7 @@ permissions:
 jobs:
   deploy:
     name: ${{ github.event_name == 'pull_request' && format('deploy (dry-run) / {0}', inputs.release-name) || format('deploy / {0}', inputs.release-name) }}
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
