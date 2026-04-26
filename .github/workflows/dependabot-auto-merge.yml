@@ -31,7 +31,7 @@ concurrency:
 jobs:
   dependabot-auto-merge:
     if: github.event.pull_request.user.login == 'dependabot[bot]' && github.event.pull_request.base.ref == 'main'
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - name: Fetch Dependabot metadata
         id: metadata

@@ -14,13 +14,25 @@ permissions:
 jobs:
   lint:
     name: lint
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: actionlint
         uses: rhysd/actionlint@914e7df21a07ef503a81201c76d2b11c789d3fca # v1.7.12
+
+      - name: Set up Python for yamllint
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install yamllint
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install 'yamllint==1.35.1'
 
       - name: yamllint
         uses: ibiqlik/action-yamllint@2576378a8e339169678f9939646ee3ee325e845c # v3.1.1
