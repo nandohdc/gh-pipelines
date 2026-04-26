@@ -16,35 +16,35 @@ rules:
   template-injection:
     ignore:
       # workflow_call inputs in ci-go are maintainer-controlled by trusted caller repos.
-      - ci-go.yml:141
-      - ci-go.yml:245
-      - ci-go.yml:246
-      - ci-go.yml:318
-      - ci-go.yml:331
+      - ci-go.yml:146
+      - ci-go.yml:250
+      - ci-go.yml:251
+      - ci-go.yml:323
+      - ci-go.yml:336
       # workflow_call inputs in ci-node are validated and constrained by the workflow interface.
-      - ci-node.yml:83
-      - ci-node.yml:86
-      - ci-node.yml:109
-      - ci-node.yml:120
-      - ci-node.yml:131
-      - ci-node.yml:142
-      - ci-node.yml:164
-      - ci-node.yml:167
-      - ci-node.yml:190
-      - ci-node.yml:201
-      - ci-node.yml:214
-      - ci-node.yml:225
-      - ci-node.yml:271
-      - ci-node.yml:274
-      - ci-node.yml:297
-      - ci-node.yml:308
-      - ci-node.yml:319
-      - ci-node.yml:334
+      - ci-node.yml:88
+      - ci-node.yml:91
+      - ci-node.yml:114
+      - ci-node.yml:125
+      - ci-node.yml:136
+      - ci-node.yml:147
+      - ci-node.yml:169
+      - ci-node.yml:172
+      - ci-node.yml:195
+      - ci-node.yml:206
+      - ci-node.yml:219
+      - ci-node.yml:230
+      - ci-node.yml:276
+      - ci-node.yml:279
+      - ci-node.yml:302
+      - ci-node.yml:313
+      - ci-node.yml:324
+      - ci-node.yml:339
       # Helm deploy interface values are constrained by trusted pipeline callers.
-      - helm-deploy.yml:110
-      - helm-deploy.yml:111
-      - helm-deploy.yml:113
       - helm-deploy.yml:115
+      - helm-deploy.yml:116
       - helm-deploy.yml:118
+      - helm-deploy.yml:120
       - helm-deploy.yml:123
-      - helm-deploy.yml:149
+      - helm-deploy.yml:128
+      - helm-deploy.yml:154
