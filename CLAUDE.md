@@ -38,10 +38,13 @@ UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/
   uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml \
   .github/workflows/** actions/**/action.yml
 
-# Inspect / set the runner-selection variable for this (or a consumer) repo
+# Inspect / set the runner-selection variable (used by internal workflows and test-callers)
 gh variable list --repo nandohdc/gh-pipelines
 gh variable set RUNNER_LABEL --body "arc-runners-gh-pipelines"  # opt into self-hosted
 gh variable delete RUNNER_LABEL                                  # revert to ubuntu-latest
+# Consumers pass runner-label as a workflow_call input instead:
+#   with:
+#     runner-label: ${{ vars.RUNNER_LABEL }}
 ```
 
 For functional validation:
@@ -76,7 +79,8 @@ Backward-compatible additions (new optional inputs, bug fixes) should use `relea
 These are enforced across every workflow/action — match them when adding or editing:
 
 - Every `workflow_call` input has `description`, `type`, `required`, and a `default` if optional.
-- Every job (reusable **and** internal) declares `runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`. Consumers and this repo opt into self-hosted runners by setting the `RUNNER_LABEL` repo/org variable; jobs fall back to GitHub-hosted `ubuntu-latest` when unset. Don't hardcode `runs-on: ubuntu-latest` in new jobs — it bypasses the opt-in and breaks repos that have configured a self-hosted pool.
+- **Reusable workflows** expose a `runner-label` input (type: string, required: false, default: `""`). Jobs resolve `runs-on` with `${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}`. Consumers pass the label at the call site — see the example in `README.md`. Don't hardcode `ubuntu-latest` in a reusable-workflow job; always use this pattern so consumers can opt in to a self-hosted pool.
+- **Internal workflows** (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) resolve their own `runs-on` from `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}` directly, since they are never called from external repos. `test-callers.yml` bridges the two: it forwards `runner-label: ${{ vars.RUNNER_LABEL }}` to each reusable workflow it calls, so the regression suite also runs on the self-hosted pool.
 - `permissions:` is set at the workflow (and per-job where feasible) to least-privilege. `docker-build.yml` scopes the extra permissions needed for hardening (`id-token: write`, `attestations: write`) to the individual SBOM / sign / provenance jobs, not the whole workflow. `docker-release.yml` is the one workflow that needs the broad set at workflow level because of cosign keyless signing + SLSA provenance + GitHub Release asset upload.
 - All `shell: bash` steps start with `set -euo pipefail`.
 - Every reusable workflow file has a header comment block with purpose + example caller snippet, and a matching example file in `examples/`.
@@ -87,7 +91,7 @@ These are enforced across every workflow/action — match them when adding or ed
 
 ## Notable cross-file coupling
 
-- `vars.RUNNER_LABEL` is the single knob that swings every job in this repository between GitHub-hosted and self-hosted runners. It is consumed by every reusable and internal workflow (`runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`) and must not be split per-workflow. When it points to a self-hosted runner, several jobs install OS-level prerequisites that are bundled on `ubuntu-latest` but missing on minimal images: `ci-go.yml` runs `apt-get install -y build-essential` (and sets `CGO_ENABLED=1`) for the `-race` detector, `actions/setup-doctl` installs `kubectl` for `helm-deploy.yml`, and `lint.yml` installs `yamllint` via pip before invoking `ibiqlik/action-yamllint`. If you add a job that depends on a system tool, gate the install on `vars.RUNNER_LABEL != ''` (matching `ci-go.yml`) so GitHub-hosted runs don't reinstall what they already have.
+- **Runner-label coupling** — `inputs.runner-label` (reusable workflows) and `vars.RUNNER_LABEL` (internal workflows) are both involved in runner selection. When adding a system-tool install that is only needed on self-hosted runners, gate it on `inputs.runner-label != ''` (reusable) or `vars.RUNNER_LABEL != ''` (internal) so GitHub-hosted runs don't reinstall what is already present. Current self-hosted prerequisites: `ci-go.yml` installs `build-essential` and sets `CGO_ENABLED=1`; `actions/setup-doctl` installs `kubectl`; `lint.yml` installs `yamllint` via pip. When zizmor line numbers in `.zizmor.yml` go stale (typically after adding a new input block), re-run zizmor locally and update the ignore list — each +5-line input block shifts every flagged line below it by 5.
 - `helm-deploy.yml` hardcodes a DigitalOcean `cluster-id` default (`adc9fd65-…`). Callers can override, but changing that default is a breaking change for repos that rely on it.
 - `ci-go.yml` conditionally shells out to consumer-repo files that this repo doesn't own: `./scripts/check-gofmt.sh` (optional, falls back to inline `gofmt`), `./scripts/check-import-direction.sh` (when `run-import-direction: true`), and `make contract` (when `run-contract: true`). Preserve the opt-in toggles — consumers without those scripts rely on the defaults staying `false`.
 - `ci-node.yml` is intentionally self-contained for cross-repo calls — it does not `uses:` the local `actions/setup-node` via a relative path. When editing, keep setup steps inline so consumers pulling `@v1` resolve everything from a single ref. The same constraint applies to `ci-python.yml`.
