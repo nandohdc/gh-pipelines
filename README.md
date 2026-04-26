@@ -73,6 +73,16 @@ steps:
       go-version: "1.26.2"
 ```
 
+## Runner Selection
+
+Reusable workflows resolve `runs-on` to `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`. By default jobs target GitHub-hosted `ubuntu-latest`. To opt into a self-hosted runner, set the repository or organization variable `RUNNER_LABEL` to the runner label you want jobs to target:
+
+```bash
+gh variable set RUNNER_LABEL --body "my-runner-label"
+```
+
+When `RUNNER_LABEL` is set, every job in the consumed reusable workflows uses that label. Unset the variable to revert to `ubuntu-latest`. See [docs/USAGE.md](docs/USAGE.md#runner-selection) for details.
+
 ## Versioning
 
 This repository uses **tag-based versioning**:
@@ -102,3 +112,4 @@ tests/fixtures/       Minimal fixtures exercised by the internal regression harn
 ## License
 
 [MIT](LICENSE)
+

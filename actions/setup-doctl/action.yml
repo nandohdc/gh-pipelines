@@ -17,6 +17,9 @@ runs:
       with:
         token: ${{ inputs.digitalocean-token }}
 
+    - name: Set up kubectl
+      uses: azure/setup-kubectl@829323503d1be3d00ca8346e5391ca0b07a9ab0d # v5.1.0
+
     - name: Load kubeconfig
       shell: bash
       env:
