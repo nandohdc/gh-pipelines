@@ -56,6 +56,11 @@ on:
         type: boolean
         required: false
         default: true
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -63,7 +68,7 @@ permissions:
 jobs:
   fmt:
     name: fmt
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -84,7 +89,7 @@ jobs:
 
   validate:
     name: validate
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -114,7 +119,7 @@ jobs:
     needs:
       - fmt
       - validate
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -162,7 +167,7 @@ jobs:
   audit:
     name: audit
     if: inputs.run-audit
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

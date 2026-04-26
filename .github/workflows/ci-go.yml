@@ -87,6 +87,11 @@ on:
         type: string
         required: false
         default: "deploy/prometheus"
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -97,7 +102,7 @@ jobs:
   # ---------------------------------------------------------------------------
   lint:
     name: lint
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -106,7 +111,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install build-essential
-        if: runner.os == 'Linux' && vars.RUNNER_LABEL != ''
+        if: runner.os == 'Linux' && inputs.runner-label != ''
         shell: bash
         run: |
           if ! command -v gcc &> /dev/null; then
@@ -149,7 +154,7 @@ jobs:
   # ---------------------------------------------------------------------------
   test:
     name: test
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -160,7 +165,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install build-essential
-        if: runner.os == 'Linux' && vars.RUNNER_LABEL != ''
+        if: runner.os == 'Linux' && inputs.runner-label != ''
         shell: bash
         run: |
           if ! command -v gcc &> /dev/null; then
@@ -214,7 +219,7 @@ jobs:
   integration:
     name: integration
     if: inputs.run-integration
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -226,7 +231,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install build-essential
-        if: runner.os == 'Linux' && vars.RUNNER_LABEL != ''
+        if: runner.os == 'Linux' && inputs.runner-label != ''
         shell: bash
         run: |
           if ! command -v gcc &> /dev/null; then
@@ -256,7 +261,7 @@ jobs:
   # ---------------------------------------------------------------------------
   vuln:
     name: vuln
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
@@ -267,7 +272,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Install build-essential
-        if: runner.os == 'Linux' && vars.RUNNER_LABEL != ''
+        if: runner.os == 'Linux' && inputs.runner-label != ''
         shell: bash
         run: |
           if ! command -v gcc &> /dev/null; then
@@ -294,7 +299,7 @@ jobs:
   validate-manifests:
     name: validate-manifests
     if: inputs.run-k8s-validate || inputs.run-prometheus-validate
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}

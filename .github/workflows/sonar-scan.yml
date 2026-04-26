@@ -40,6 +40,11 @@ on:
         type: string
         required: false
         default: ""
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
     secrets:
       SONAR_TOKEN:
         description: "SonarQube token for authentication."
@@ -55,7 +60,7 @@ permissions:
 jobs:
   scan:
     name: sonar-scan
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6

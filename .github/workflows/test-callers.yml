@@ -25,6 +25,7 @@ jobs:
     with:
       working-directory: tests/fixtures/go
       coverage-min: "0"
+      runner-label: ${{ vars.RUNNER_LABEL }}
 
   test-ci-node:
     name: test ci-node caller
@@ -33,6 +34,7 @@ jobs:
       working-directory: tests/fixtures/node
       package-manager: npm
       run-audit: false
+      runner-label: ${{ vars.RUNNER_LABEL }}
 
   test-ci-python:
     name: test ci-python caller
@@ -42,6 +44,7 @@ jobs:
       lint-paths: tests/fixtures/python/src tests/fixtures/python/tests
       test-paths: tests/fixtures/python/tests
       run-audit: false
+      runner-label: ${{ vars.RUNNER_LABEL }}
 
   test-ci-with-sonar-go:
     name: test ci-with-sonar-go caller
@@ -53,6 +56,7 @@ jobs:
       working-directory: tests/fixtures/go
       coverage-min: "0"
       __test_skip_sonar_call: true
+      runner-label: ${{ vars.RUNNER_LABEL }}
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -67,6 +71,7 @@ jobs:
       package-manager: npm
       run-audit: false
       __test_skip_sonar_call: true
+      runner-label: ${{ vars.RUNNER_LABEL }}
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -82,6 +87,7 @@ jobs:
       test-paths: tests/fixtures/python/tests
       run-audit: false
       __test_skip_sonar_call: true
+      runner-label: ${{ vars.RUNNER_LABEL }}
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -91,3 +97,4 @@ jobs:
     with:
       working-directory: tests/fixtures/terraform
       run-audit: false
+      runner-label: ${{ vars.RUNNER_LABEL }}

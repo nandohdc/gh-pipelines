@@ -6,24 +6,48 @@ Complete reference for every reusable workflow and composite action in this repo
 
 ## Runner Selection
 
-Every reusable workflow declares `runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`. Consumers control runner targeting through a single repository or organization variable:
+Every reusable workflow exposes an optional `runner-label` input. Jobs resolve `runs-on` to the supplied label, or fall back to GitHub-hosted `ubuntu-latest` when the input is empty or omitted.
 
-| Variable | Scope | Effect |
-| --- | --- | --- |
-| `RUNNER_LABEL` (unset) | repo / org | Jobs run on GitHub-hosted `ubuntu-latest` (default). |
-| `RUNNER_LABEL=<label>` | repo / org | Jobs run on the self-hosted runner registered with that label. |
+### Consumer usage
 
-Set the variable with:
+Pass the label explicitly in each `workflow_call` block:
+
+```yaml
+jobs:
+  ci:
+    uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
+    with:
+      go-version: "1.26.2"
+      runner-label: ${{ vars.RUNNER_LABEL }}
+```
+
+Set `RUNNER_LABEL` once at the repository or organization level and every workflow that forwards it picks up the same pool:
 
 ```bash
 gh variable set RUNNER_LABEL --body "arc-runners-myorg"
 ```
 
-Notes for self-hosted runners:
+### Internal repo usage
 
-- The runner image must include the toolchains the workflow needs (Docker for `docker-build.yml`/`docker-release.yml`, `kubectl` for `helm-deploy.yml`, etc.). The `actions/setup-doctl` composite installs `kubectl` automatically; the Go CI workflow installs `build-essential` on demand for the `-race` detector.
-- `RUNNER_LABEL` overrides every job in the reusable workflow. Use a runner image broad enough for all the workflow's jobs.
-- The variable is only consumed by the workflows under `.github/workflows/`. Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) honor the same variable so the gh-pipelines repo itself can run on the same runner pool.
+Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) resolve their own `runs-on` directly from `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`, so the gh-pipelines repo itself can run on the same pool without requiring callers to pass anything.
+
+`test-callers.yml` forwards the variable to the reusable workflows it calls:
+
+```yaml
+with:
+  runner-label: ${{ vars.RUNNER_LABEL }}
+```
+
+### Self-hosted runner prerequisites
+
+| Workflow | Required extras |
+| --- | --- |
+| `ci-go.yml` | `build-essential` (installed on demand), `CGO_ENABLED=1` set automatically |
+| `helm-deploy.yml` | `kubectl` — installed by `actions/setup-doctl` composite |
+| `docker-build.yml`, `docker-release.yml` | Docker daemon |
+| `lint.yml` | `yamllint` — installed via pip before the action step |
+
+Use a runner image broad enough for all jobs the workflow triggers.
 
 ---
 
