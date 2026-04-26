@@ -117,6 +117,11 @@ on:
         type: boolean
         required: false
         default: false
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
     secrets:
       DOPPLER_TOKEN:
         description: "Read-only Doppler service token used to fetch Sonar credentials."
@@ -144,11 +149,12 @@ jobs:
       k8s-manifests-dir: ${{ inputs.k8s-manifests-dir }}
       run-prometheus-validate: ${{ inputs.run-prometheus-validate }}
       prometheus-rules-dir: ${{ inputs.prometheus-rules-dir }}
+      runner-label: ${{ inputs.runner-label }}
 
   sonar-scan:
     name: sonar-scan
     if: ${{ !inputs.__test_skip_sonar_call }}
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on:  ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     permissions:
       contents: read
       pull-requests: read

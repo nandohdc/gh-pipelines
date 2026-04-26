@@ -87,6 +87,11 @@ on:
         type: string
         required: false
         default: "deploy/prometheus"
+      runner-label:
+        description: "Self-hosted runner label. Empty uses ubuntu-latest."
+        type: string
+        required: false
+        default: ""
 
 permissions:
   contents: read
@@ -97,7 +102,7 @@ jobs:
   # ---------------------------------------------------------------------------
   lint:
     name: lint
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     defaults:
       run:
         working-directory: ${{ inputs.working-directory }}
