@@ -100,3 +100,12 @@ jobs:
       working-directory: tests/fixtures/terraform
       run-audit: false
       runner-label: ${{ vars.RUNNER_LABEL }}
+
+  test-ci-terraform-no-plan:
+    name: test ci-terraform caller (no plan)
+    uses: ./.github/workflows/ci-terraform.yml
+    with:
+      working-directory: tests/fixtures/terraform
+      run-plan: false
+      run-audit: false
+      runner-label: ${{ vars.RUNNER_LABEL }}
