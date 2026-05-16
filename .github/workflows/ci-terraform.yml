@@ -77,7 +77,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: ./actions/setup-terraform
+        uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
         with:
           terraform-version: ${{ inputs.terraform-version }}
 
@@ -98,7 +98,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: ./actions/setup-terraform
+        uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
         with:
           terraform-version: ${{ inputs.terraform-version }}
 
@@ -128,7 +128,7 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Setup Terraform
-        uses: ./actions/setup-terraform
+        uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
         with:
           terraform-version: ${{ inputs.terraform-version }}
 

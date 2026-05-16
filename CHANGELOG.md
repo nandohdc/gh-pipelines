@@ -12,9 +12,9 @@ Notes:
 
 ## [Unreleased]
 
-### Changed
+### Fixed
 
-- No unreleased changes.
+- `ci-terraform.yml`: replace relative `./actions/setup-terraform` references with absolute `nandohdc/gh-pipelines/actions/setup-terraform@v1` so the workflow succeeds when called from external repositories (issue #83).
 
 ## [v1.7.0] - 2026-05-13
 
