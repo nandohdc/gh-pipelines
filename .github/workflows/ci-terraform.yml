@@ -41,6 +41,11 @@ on:
         type: string
         required: false
         default: ""
+      run-plan:
+        description: "Run terraform plan (backend init enabled)."
+        type: boolean
+        required: false
+        default: true
       run-audit:
         description: "Run IaC security audit."
         type: boolean
@@ -116,6 +121,7 @@ jobs:
 
   plan:
     name: plan
+    if: inputs.run-plan
     needs:
       - fmt
       - validate
