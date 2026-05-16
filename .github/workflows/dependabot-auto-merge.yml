@@ -44,24 +44,26 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
-          labels=$(gh pr view "${PR_NUMBER}" --json labels --jq '.labels[].name')
+          labels=$(gh pr view "${PR_NUMBER}" --repo "${GH_REPO}" --json labels --jq '.labels[].name')
           if ! echo "${labels}" | grep -qx 'release:patch'; then
-            gh pr edit "${PR_NUMBER}" --add-label 'release:patch'
+            gh pr edit "${PR_NUMBER}" --repo "${GH_REPO}" --add-label 'release:patch'
           fi
 
-          gh pr merge "${PR_NUMBER}" --auto --squash
+          gh pr merge "${PR_NUMBER}" --repo "${GH_REPO}" --auto --squash
 
       - name: Comment on major updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-major'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
 
-          gh pr comment "${PR_NUMBER}" --body 'Major update; maintainer review required.'
+          gh pr comment "${PR_NUMBER}" --repo "${GH_REPO}" --body 'Major update; maintainer review required.'
