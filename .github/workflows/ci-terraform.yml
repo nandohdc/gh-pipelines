@@ -56,6 +56,11 @@ on:
         type: string
         required: false
         default: "tfsec"
+      tfsec-additional-args:
+        description: "Additional tfsec CLI flags (used only when audit-tool=tfsec)."
+        type: string
+        required: false
+        default: ""
       upload-plan:
         description: "Upload tfplan artifact on pull_request events."
         type: boolean
@@ -197,6 +202,7 @@ jobs:
         uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 # v1.0.3
         with:
           working_directory: ${{ inputs.working-directory }}
+          additional_args: ${{ inputs.tfsec-additional-args }}
 
       - name: Run checkov
         if: inputs.audit-tool == 'checkov'
