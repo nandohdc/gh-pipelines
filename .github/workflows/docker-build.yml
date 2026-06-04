@@ -67,6 +67,11 @@ on:
         type: boolean
         required: false
         default: false
+      attest-sbom:
+        description: "Emit the SPDX SBOM as a cosign attestation (cosign attest --type spdxjson) on the pushed image digest."
+        type: boolean
+        required: false
+        default: false
       runner-label:
         description: "Self-hosted runner label. Empty uses ubuntu-latest."
         type: string
@@ -161,12 +166,44 @@ jobs:
       packages: write
       id-token: write
     steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Sign image digest
         uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
         with:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
           sign-image: "true"
+
+  attest-sbom:
+    name: attest-sbom
+    if: ${{ inputs.attest-sbom && inputs.push && github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && needs.build.outputs.digest != '' }}
+    needs: build
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121 # v4.1.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Attest SPDX SBOM
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        with:
+          image-name: ${{ inputs.image-name }}
+          image-digest: ${{ needs.build.outputs.digest }}
+          attest-sbom: "true"
+          sbom-artifact-suffix: attest-${{ github.run_id }}
 
   provenance:
     name: provenance
