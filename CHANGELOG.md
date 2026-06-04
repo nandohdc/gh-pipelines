@@ -19,6 +19,7 @@ Notes:
 
 ### Fixed
 
+- `docker-build.yml`: log in to GHCR before the existing `sbom` job calls Syft through `supply-chain-attest`, so `generate-sbom: true` works for private GHCR images instead of failing with `UNAUTHORIZED`.
 - `ci-terraform.yml`: replace relative `./actions/setup-terraform` references with absolute `nandohdc/gh-pipelines/actions/setup-terraform@v1` so the workflow succeeds when called from external repositories (issue #83).
 
 ## [v1.7.0] - 2026-05-13
