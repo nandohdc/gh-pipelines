@@ -23,7 +23,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
 | **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with quality gate enforcement |
 
-*`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled.
+*`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `attest-sbom`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled. The `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`), so they fail closed instead of silently passing when no signature/attestation is produced.
 
 ## Available Composite Actions
 

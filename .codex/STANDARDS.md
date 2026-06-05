@@ -71,7 +71,7 @@ These standards are mandatory for Codex changes in this repository.
   - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
 - If touching `.github/workflows/dependabot-auto-merge.yml`, validate Dependabot-only scoping and both update paths (patch/minor auto-merge, major update comment).
 - Validate functional behavior from a consumer repo by pinning `uses:` to a branch ref when behavior changes.
-- If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository.
+- If touching `.github/workflows/docker-build.yml` hardening inputs or `actions/supply-chain-attest`, validate both default-path and hardened-path behavior in a non-production repository. Keep the in-workflow self-verify steps in the `sign-image`/`attest-sbom` jobs (`cosign verify` / `cosign verify-attestation`) and the `release.yml` `attest-sbom` manifest guard so the floating `supply-chain-attest@v1` ref cannot silently no-op.
 - If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.
 - If touching `.github/workflows/integration-smoke.yml`, validate:
   - `workflow_dispatch` success path on `main`,

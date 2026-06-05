@@ -109,3 +109,24 @@ jobs:
       run-plan: false
       run-audit: false
       runner-label: ${{ vars.RUNNER_LABEL }}
+
+  # Exercises docker-build.yml against the docker fixture. On PRs the attest-sbom
+  # job is skipped (build-only, no push). On push to main it builds + pushes the
+  # fixture image, runs cosign attest, and the in-workflow self-verify makes the
+  # job green only when a real SPDX SBOM attestation exists.
+  test-docker-build-attest:
+    name: test docker-build caller (attest-sbom)
+    permissions:
+      contents: read
+      packages: write
+      actions: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/docker-build.yml
+    with:
+      image-name: ghcr.io/${{ github.repository }}/test-docker-fixture
+      context: tests/fixtures/docker
+      dockerfile: tests/fixtures/docker/Dockerfile
+      platforms: linux/amd64
+      attest-sbom: true
+      runner-label: ${{ vars.RUNNER_LABEL }}
