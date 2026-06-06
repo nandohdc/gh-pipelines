@@ -1,8 +1,9 @@
 # =============================================================================
 # Example: Docker build caller workflow (optional hardening enabled)
 # =============================================================================
-# Enables SBOM generation, cosign keyless signing, and SLSA provenance for
-# pushed images from docker-build.yml.
+# Enables SBOM generation, cosign keyless signing, SPDX SBOM attestation, and
+# SLSA provenance for pushed images from docker-build.yml. The sign-image and
+# attest-sbom jobs self-verify, so they fail closed if nothing is produced.
 # =============================================================================
 
 name: docker-build-hardened
@@ -19,6 +20,7 @@ jobs:
       image-name: ghcr.io/${{ github.repository }}
       generate-sbom: true
       sign-image: true
+      attest-sbom: true
       generate-provenance: true
     permissions:
       contents: read

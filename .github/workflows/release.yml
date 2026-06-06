@@ -91,6 +91,18 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
+      - name: Guard - supply-chain-attest manifest declares attest-sbom
+        if: steps.release_type.outputs.should_release == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          manifest="actions/supply-chain-attest/action.yml"
+          if ! grep -qE '^[[:space:]]*attest-sbom:' "${manifest}"; then
+            echo "::error::${manifest} at the release commit does not declare 'attest-sbom'; docker-build.yml's attest-sbom job would silently no-op behind @v1. Aborting release."
+            exit 1
+          fi
+          echo "Release guard OK: ${manifest} declares attest-sbom."
+
       - name: Compute next version
         if: steps.release_type.outputs.should_release == 'true'
         id: semver

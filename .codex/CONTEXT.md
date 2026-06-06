@@ -94,8 +94,9 @@
   - checks active canary consumer `nandohdc/financial-events-ingestion-api` by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
   - opens a `drift`- or `sonar-missing`-labeled issue in this repository on failure
 - Docker build hardening surface:
-  - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, and `sign-image` inputs (default `false`)
-  - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance logic
+  - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, `sign-image`, and `attest-sbom` inputs (default `false`)
+  - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance/attestation logic
+  - the `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`) so a drifted `supply-chain-attest@v1` ref fails closed instead of silently no-opping; `release.yml` guards that the action manifest declares `attest-sbom` before moving `v1`
 - YAML lint config:
   - `.yamllint.yml` with line-length warnings and comments-indentation disabled
 - Composite actions:

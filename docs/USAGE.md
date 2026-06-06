@@ -317,7 +317,7 @@ jobs:
 
 ### docker-build.yml — Docker Build + Push
 
-Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch. Optional inputs can also generate SBOMs, sign by digest, and emit SLSA provenance.
+Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch. Optional inputs can also generate SBOMs, sign by digest, attest the SBOM, and emit SLSA provenance. The `sign-image` and `attest-sbom` jobs self-verify (`cosign verify` / `cosign verify-attestation --type spdxjson`) against the pushed digest, so they fail closed if no signature/attestation is produced.
 
 #### Inputs
 
@@ -332,7 +332,8 @@ Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes t
 | `extra-tags` | string | no | `""` | Extra metadata-action tag rules |
 | `generate-sbom` | boolean | no | `false` | Generate SPDX + CycloneDX SBOM artifacts for pushed images |
 | `generate-provenance` | boolean | no | `false` | Generate SLSA provenance attestation for pushed images |
-| `sign-image` | boolean | no | `false` | Sign pushed image digest using cosign keyless mode |
+| `sign-image` | boolean | no | `false` | Sign pushed image digest using cosign keyless mode (the job self-verifies with `cosign verify`) |
+| `attest-sbom` | boolean | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson`) on the pushed digest; the job self-verifies with `cosign verify-attestation` and fails if no attestation is produced |
 
 #### Permissions
 
@@ -346,6 +347,7 @@ When optional hardening inputs are enabled, caller permissions must include:
 | --- | --- |
 | `generate-sbom` | `actions: write` |
 | `sign-image` | `id-token: write` |
+| `attest-sbom` | `actions: write`, `id-token: write` |
 | `generate-provenance` | `id-token: write`, `attestations: write` |
 
 #### Outputs
@@ -616,6 +618,7 @@ Default tags: `sha-<short>`, `latest` (on default branch), `ref:tag`.
 | `generate-sbom` | no | `false` | Generate SPDX + CycloneDX SBOM artifacts |
 | `generate-provenance` | no | `false` | Generate SLSA provenance attestation |
 | `sign-image` | no | `false` | Sign image by digest using cosign keyless mode |
+| `attest-sbom` | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson`) on the image digest |
 | `sbom-artifact-suffix` | no | `run` | Suffix appended to SBOM artifact names |
 | `sbom-spdx-output` | no | `sbom.spdx.json` | Output path for SPDX SBOM |
 | `sbom-cyclonedx-output` | no | `sbom.cyclonedx.json` | Output path for CycloneDX SBOM |

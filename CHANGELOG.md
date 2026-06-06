@@ -16,9 +16,12 @@ Notes:
 
 - `supply-chain-attest` action: new `attest-sbom` input that emits the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson`) on the image digest, so downstream consumers can `cosign verify-attestation --type spdxjson`. Adds an `envsubst`/`gettext-base` preflight before `cosign-installer` (robust cosign install on self-hosted/ARC runners) and widens the SPDX-generate + cosign-install gates to cover the attest path (`nandohdc/financial-events-ingestion-api#78`).
 - `docker-build.yml`: new `attest-sbom` input that runs a dedicated `attest-sbom` job (GHCR login + `cosign attest --type spdxjson`) for `:latest`/default-branch pushes, plus a GHCR login added to the `sign-image` job so cosign can push signatures for **private** images.
+- `test-callers.yml`: new `docker-build` caller exercising `attest-sbom: true` against a `tests/fixtures/docker` image — build-only on PRs, full build + push + attest + self-verify on push to main.
 
 ### Fixed
 
+- `docker-build.yml`: the `attest-sbom` and `sign-image` jobs now self-verify in the workflow (`cosign verify-attestation --type spdxjson` / `cosign verify`) after calling `supply-chain-attest`. Previously, if the floating `supply-chain-attest@v1` ref resolved to a manifest without the `attest-sbom` step (ref drift on a branch-pinned run or a lagging `v1`), the job logged in to GHCR, found no step to run, and **exited green with no attestation**. Verification lives in the workflow (not the action), so it cannot be skipped by an older action and fails the job if no valid signature/attestation is present (issue #101).
+- `release.yml`: added a release-time guard that aborts the release unless `actions/supply-chain-attest/action.yml` at the release commit declares `attest-sbom`, so the floating `v1` tag can never advance onto a manifest the `docker-build.yml` attest path depends on.
 - `docker-build.yml`: log in to GHCR before the existing `sbom` job calls Syft through `supply-chain-attest`, so `generate-sbom: true` works for private GHCR images instead of failing with `UNAUTHORIZED`.
 - `ci-terraform.yml`: replace relative `./actions/setup-terraform` references with absolute `nandohdc/gh-pipelines/actions/setup-terraform@v1` so the workflow succeeds when called from external repositories (issue #83).
 
