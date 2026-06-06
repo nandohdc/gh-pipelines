@@ -97,6 +97,7 @@
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, `sign-image`, and `attest-sbom` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance/attestation logic
   - the `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`) so a drifted `supply-chain-attest@v1` ref fails closed instead of silently no-opping; `release.yml` guards that the action manifest declares `attest-sbom` before moving `v1`
+  - the `attest-sbom` path pins `--new-bundle-format=false` on both `cosign attest` (action) and `cosign verify-attestation` (workflow); cosign v3's default new bundle format (OCI 1.1 referrers) is not reliably retrievable on GHCR (`no valid bundles exist in registry`), so the legacy `.att` format is used end to end (issue #104)
 - YAML lint config:
   - `.yamllint.yml` with line-length warnings and comments-indentation disabled
 - Composite actions:

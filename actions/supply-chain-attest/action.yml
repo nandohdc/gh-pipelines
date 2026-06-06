@@ -106,7 +106,13 @@ runs:
         SBOM_SPDX_OUTPUT: ${{ inputs.sbom-spdx-output }}
       run: |
         set -euo pipefail
+        # Pin the legacy .att DSSE tag scheme (--new-bundle-format=false). cosign v3
+        # defaults to the new Sigstore bundle format attached via the OCI 1.1 referrers
+        # API, which does not round-trip reliably on GHCR — verify-attestation then fails
+        # with "no valid bundles exist in registry" (issue #104). The verify step in
+        # docker-build.yml pins the same flag so the formats match.
         cosign attest --yes \
+          --new-bundle-format=false \
           --predicate "${SBOM_SPDX_OUTPUT}" \
           --type spdxjson \
           "${IMAGE_NAME}@${IMAGE_DIGEST}"
