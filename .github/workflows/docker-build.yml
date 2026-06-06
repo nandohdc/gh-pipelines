@@ -275,7 +275,13 @@ jobs:
           IMAGE_DIGEST: ${{ needs.build.outputs.digest }}
         run: |
           set -euo pipefail
+          # --new-bundle-format=false matches the legacy .att DSSE tag scheme that
+          # actions/supply-chain-attest pins on the cosign attest side. cosign v3's
+          # default new bundle format (OCI 1.1 referrers) is not reliably retrievable on
+          # GHCR, so verify-attestation fails with "no valid bundles exist in registry"
+          # (issue #104). Identity/issuer/tlog checks below are unchanged — still fail-closed.
           cosign verify-attestation \
+            --new-bundle-format=false \
             --type spdxjson \
             --certificate-identity-regexp '^https://github\.com/nandohdc/gh-pipelines/\.github/workflows/docker-build\.yml@refs/.+$' \
             --certificate-oidc-issuer 'https://token.actions.githubusercontent.com' \
