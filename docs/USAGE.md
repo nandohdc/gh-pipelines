@@ -344,7 +344,7 @@ cosign verify-attestation \
 | `generate-sbom` | boolean | no | `false` | Generate SPDX + CycloneDX SBOM artifacts for pushed images |
 | `generate-provenance` | boolean | no | `false` | Generate SLSA provenance attestation for pushed images |
 | `sign-image` | boolean | no | `false` | Sign pushed image digest using cosign keyless mode (the job self-verifies with `cosign verify`) |
-| `attest-sbom` | boolean | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson --new-bundle-format=false`) on the pushed digest; the job self-verifies with `cosign verify-attestation` and fails if no attestation is produced |
+| `attest-sbom` | boolean | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson --new-bundle-format=false --use-signing-config=false`) on the pushed digest; the job self-verifies with `cosign verify-attestation` and fails if no attestation is produced |
 
 #### Permissions
 
@@ -629,7 +629,7 @@ Default tags: `sha-<short>`, `latest` (on default branch), `ref:tag`.
 | `generate-sbom` | no | `false` | Generate SPDX + CycloneDX SBOM artifacts |
 | `generate-provenance` | no | `false` | Generate SLSA provenance attestation |
 | `sign-image` | no | `false` | Sign image by digest using cosign keyless mode |
-| `attest-sbom` | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson --new-bundle-format=false`) on the image digest |
+| `attest-sbom` | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson --new-bundle-format=false --use-signing-config=false`) on the image digest |
 | `sbom-artifact-suffix` | no | `run` | Suffix appended to SBOM artifact names |
 | `sbom-spdx-output` | no | `sbom.spdx.json` | Output path for SPDX SBOM |
 | `sbom-cyclonedx-output` | no | `sbom.cyclonedx.json` | Output path for CycloneDX SBOM |
