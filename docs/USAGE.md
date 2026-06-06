@@ -330,6 +330,8 @@ cosign verify-attestation \
   ghcr.io/<owner>/<image>@sha256:<digest>
 ```
 
+> **Self-hosted runner prerequisite (`sign-image` / `attest-sbom`):** cosign install needs `envsubst` (from `gettext-base`). The preflight installs it automatically when missing — running `apt-get` directly as root, or via `sudo` when passwordless sudo is available. On locked-down images that are non-root **and** lack passwordless sudo, preinstall `gettext-base` in the runner image; otherwise the job fails fast with an actionable message. GitHub-hosted `ubuntu-latest` already ships `gettext-base`.
+
 #### Inputs
 
 | Input | Type | Required | Default | Description |

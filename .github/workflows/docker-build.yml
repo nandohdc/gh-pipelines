@@ -197,12 +197,26 @@ jobs:
           if command -v envsubst >/dev/null 2>&1; then
             exit 0
           fi
-          if [ "$(uname -s)" != "Linux" ] || ! command -v apt-get >/dev/null 2>&1; then
-            echo "envsubst is missing; use a Linux runner with gettext-base support." >&2
+          if [ "$(uname -s)" != "Linux" ]; then
+            echo "envsubst is missing: automatic gettext-base install is only supported on Linux runners. Install gettext-base in the runner image." >&2
             exit 1
           fi
-          sudo apt-get update
-          sudo apt-get install -y gettext-base
+          if ! command -v apt-get >/dev/null 2>&1; then
+            echo "envsubst is missing and apt-get is unavailable. Install gettext-base in the runner image." >&2
+            exit 1
+          fi
+          # Privilege-aware install: root containers have no sudo; locked-down ARC/self-hosted
+          # images have no passwordless sudo. Running sudo unconditionally breaks both (issue #102).
+          if [ "$(id -u)" = "0" ]; then
+            apt-get update
+            apt-get install -y gettext-base
+          elif sudo -n true 2>/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y gettext-base
+          else
+            echo "envsubst is missing and gettext-base cannot be installed: not running as root and passwordless sudo is unavailable. Install gettext-base in the runner image (apt-get install -y gettext-base)." >&2
+            exit 1
+          fi
           command -v envsubst >/dev/null 2>&1
 
       - name: Install cosign
@@ -257,12 +271,26 @@ jobs:
           if command -v envsubst >/dev/null 2>&1; then
             exit 0
           fi
-          if [ "$(uname -s)" != "Linux" ] || ! command -v apt-get >/dev/null 2>&1; then
-            echo "envsubst is missing; use a Linux runner with gettext-base support." >&2
+          if [ "$(uname -s)" != "Linux" ]; then
+            echo "envsubst is missing: automatic gettext-base install is only supported on Linux runners. Install gettext-base in the runner image." >&2
             exit 1
           fi
-          sudo apt-get update
-          sudo apt-get install -y gettext-base
+          if ! command -v apt-get >/dev/null 2>&1; then
+            echo "envsubst is missing and apt-get is unavailable. Install gettext-base in the runner image." >&2
+            exit 1
+          fi
+          # Privilege-aware install: root containers have no sudo; locked-down ARC/self-hosted
+          # images have no passwordless sudo. Running sudo unconditionally breaks both (issue #102).
+          if [ "$(id -u)" = "0" ]; then
+            apt-get update
+            apt-get install -y gettext-base
+          elif sudo -n true 2>/dev/null; then
+            sudo apt-get update
+            sudo apt-get install -y gettext-base
+          else
+            echo "envsubst is missing and gettext-base cannot be installed: not running as root and passwordless sudo is unavailable. Install gettext-base in the runner image (apt-get install -y gettext-base)." >&2
+            exit 1
+          fi
           command -v envsubst >/dev/null 2>&1
 
       - name: Install cosign
