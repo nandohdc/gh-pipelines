@@ -38,6 +38,8 @@ with:
   runner-label: ${{ vars.RUNNER_LABEL }}
 ```
 
+For the `nandohdc/gh-pipelines` repository, set `RUNNER_LABEL` to `arc-runners-gh-pipelines`.
+
 ### Self-hosted runner prerequisites
 
 | Workflow | Required extras |
