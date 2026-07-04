@@ -93,7 +93,7 @@ jobs:
     runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup doctl + kubeconfig
         uses: nandohdc/gh-pipelines/actions/setup-doctl@v1
