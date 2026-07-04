@@ -108,7 +108,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -162,7 +162,7 @@ jobs:
       CGO_ENABLED: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -228,7 +228,7 @@ jobs:
       CGO_ENABLED: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -269,7 +269,7 @@ jobs:
       CGO_ENABLED: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -305,7 +305,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Set up kubectl
         if: inputs.run-k8s-validate

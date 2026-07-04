@@ -84,7 +84,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Terraform
         uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
@@ -105,7 +105,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Terraform
         uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
@@ -136,7 +136,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Setup Terraform
         uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
@@ -181,7 +181,7 @@ jobs:
     runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Validate audit tool
         shell: bash
@@ -206,7 +206,7 @@ jobs:
 
       - name: Run checkov
         if: inputs.audit-tool == 'checkov'
-        uses: bridgecrewio/checkov-action@fa9edf8f0a491c59a924ea6accd5bdcf07752cff # v12.3107.0
+        uses: bridgecrewio/checkov-action@a7683e7b72a04503521247973281ec8142e1ac1f # v12.3112.0
         with:
           directory: ${{ inputs.working-directory }}
           framework: terraform
