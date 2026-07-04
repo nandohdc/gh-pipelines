@@ -227,8 +227,18 @@ jobs:
 
       - name: Run checkov
         if: inputs.audit-tool == 'checkov'
-        uses: bridgecrewio/checkov-action@a7683e7b72a04503521247973281ec8142e1ac1f # v12.3112.0
-        with:
-          directory: ${{ inputs.working-directory }}
-          framework: terraform
-          output_format: cli
+        shell: bash
+        # Native checkov instead of bridgecrewio/checkov-action: that action is a
+        # Docker *container* action, and GitHub pre-pulls a job's container-action
+        # images during "Prepare all required actions" even when the step is
+        # skipped by `if:`. On runners without Docker that pull fails and kills the
+        # whole audit job (including the tfsec path). Installing checkov via pip
+        # keeps this job container-free so it runs on any runner.
+        env:
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --disable-pip-version-check --user checkov \
+            || python3 -m pip install --quiet --disable-pip-version-check --user --break-system-packages checkov
+          PATH="$(python3 -c 'import site, os; print(os.path.join(site.getuserbase(), "bin"))'):$PATH"
+          checkov --directory "$WORKING_DIRECTORY" --framework terraform --compact
