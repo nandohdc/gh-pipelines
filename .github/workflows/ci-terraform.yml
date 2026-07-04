@@ -199,10 +199,31 @@ jobs:
 
       - name: Run tfsec
         if: inputs.audit-tool == 'tfsec'
-        uses: aquasecurity/tfsec-action@b466648d6e39e7c75324f25d83891162a721f2d6 # v1.0.3
-        with:
-          working_directory: ${{ inputs.working-directory }}
-          additional_args: ${{ inputs.tfsec-additional-args }}
+        shell: bash
+        # Native binary instead of aquasecurity/tfsec-action: that action is a
+        # Docker *container* action, which self-hosted runners can't run (macOS
+        # forbids container actions; ARC runner pods have no Docker daemon at
+        # /var/run/docker.sock). The binary runs on any runner OS/arch. Inputs
+        # go through env vars to avoid ${{ }} script injection.
+        env:
+          TFSEC_VERSION: v1.28.14
+          WORKING_DIRECTORY: ${{ inputs.working-directory }}
+          TFSEC_ADDITIONAL_ARGS: ${{ inputs.tfsec-additional-args }}
+        run: |
+          set -euo pipefail
+          os="$(uname -s | tr '[:upper:]' '[:lower:]')"
+          arch="$(uname -m)"
+          case "$arch" in
+            x86_64 | amd64) arch=amd64 ;;
+            aarch64 | arm64) arch=arm64 ;;
+            *) echo "::error::unsupported arch '$arch'"; exit 1 ;;
+          esac
+          bindir="${RUNNER_TEMP:-/tmp}"
+          curl -fsSL -o "$bindir/tfsec" \
+            "https://github.com/aquasecurity/tfsec/releases/download/${TFSEC_VERSION}/tfsec-${os}-${arch}"
+          chmod +x "$bindir/tfsec"
+          # shellcheck disable=SC2086  # additional args must word-split into argv
+          "$bindir/tfsec" "$WORKING_DIRECTORY" $TFSEC_ADDITIONAL_ARGS
 
       - name: Run checkov
         if: inputs.audit-tool == 'checkov'
