@@ -33,6 +33,45 @@ jobs:
   release:
     runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
     steps:
+      - name: Ensure gh CLI is available (self-hosted runners)
+        if: vars.RUNNER_LABEL != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if command -v gh >/dev/null 2>&1; then
+            echo "gh already present: $(gh --version | head -n1)"
+            exit 0
+          fi
+
+          if ! command -v apt-get >/dev/null 2>&1; then
+            echo "gh is missing and apt-get is unavailable. Install the GitHub CLI (gh) in the runner image." >&2
+            exit 1
+          fi
+
+          # Privilege-aware install: root images have no sudo; locked-down
+          # non-root images have no passwordless sudo (mirrors the gettext-base
+          # cosign preflight, issue #102).
+          sudo_cmd=()
+          if [ "$(id -u)" != "0" ]; then
+            if sudo -n true 2>/dev/null; then
+              sudo_cmd=(sudo)
+            else
+              echo "gh is missing and cannot be installed: not root and passwordless sudo is unavailable. Install the GitHub CLI (gh) in the runner image." >&2
+              exit 1
+            fi
+          fi
+
+          keyring=/etc/apt/keyrings/githubcli-archive-keyring.gpg
+          "${sudo_cmd[@]}" mkdir -p -m 755 /etc/apt/keyrings
+          curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | "${sudo_cmd[@]}" tee "${keyring}" >/dev/null
+          "${sudo_cmd[@]}" chmod go+r "${keyring}"
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=${keyring}] https://cli.github.com/packages stable main" \
+            | "${sudo_cmd[@]}" tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+          "${sudo_cmd[@]}" apt-get update
+          "${sudo_cmd[@]}" apt-get install -y gh
+          gh --version
+
       - name: Determine release type from merged PR labels
         id: release_type
         shell: bash
@@ -42,13 +81,26 @@ jobs:
         run: |
           set -euo pipefail
 
-          pr_number=$(
-            gh api "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
-              --jq 'map(select(.merged_at != null and .base.ref == "main")) | .[0].number // empty' \
-              || true
-          )
+          # Resolve the merged PR number. Prefer the squash-merge commit
+          # subject "… (#N)" (GitHub's default squash format, used by Dependabot):
+          # it needs no API call and is immune to the eventual-consistency lag of
+          # /commits/{sha}/pulls right after a squash merge.
+          pr_number=""
+          subject="${HEAD_COMMIT_MESSAGE%%$'\n'*}"
+          if [[ "${subject}" =~ \(#([0-9]+)\)[[:space:]]*$ ]]; then
+            pr_number="${BASH_REMATCH[1]}"
+          fi
+          # Classic merge-commit fallback ("Merge pull request #N …").
           if [ -z "${pr_number}" ] && [[ "${HEAD_COMMIT_MESSAGE}" =~ ^Merge[[:space:]]pull[[:space:]]request[[:space:]]#([0-9]+) ]]; then
             pr_number="${BASH_REMATCH[1]}"
+          fi
+          # API fallback. No "|| true": a genuine failure (e.g. gh missing on a
+          # self-hosted runner) must fail the run, not silently skip the release.
+          if [ -z "${pr_number}" ]; then
+            pr_number=$(
+              gh api "/repos/${GITHUB_REPOSITORY}/commits/${GITHUB_SHA}/pulls" \
+                --jq 'map(select(.merged_at != null and .base.ref == "main")) | .[0].number // empty'
+            )
           fi
           if [ -z "${pr_number}" ]; then
             echo "No merged PR associated with commit ${GITHUB_SHA}; skipping release."
@@ -59,7 +111,7 @@ jobs:
           fi
 
           release_type=""
-          labels=$(gh api "/repos/${GITHUB_REPOSITORY}/issues/${pr_number}/labels" --jq '.[].name' || true)
+          labels=$(gh api "/repos/${GITHUB_REPOSITORY}/issues/${pr_number}/labels" --jq '.[].name')
 
           if echo "${labels}" | grep -qx 'release:major'; then
             release_type="major"
