@@ -94,7 +94,7 @@ jobs:
           esac
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
@@ -175,7 +175,7 @@ jobs:
           esac
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
@@ -282,7 +282,7 @@ jobs:
           esac
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
           cache: ${{ inputs.package-manager }}
