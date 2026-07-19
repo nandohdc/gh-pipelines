@@ -1,8 +1,15 @@
 # =============================================================================
 # Example: Node.js service CI + Sonar bundle caller workflow
 # =============================================================================
-# Copy this file to your Node.js repository at .github/workflows/ci.yml
-# and provision only one secret: DOPPLER_TOKEN.
+# Copy this file to your Node.js repository at .github/workflows/ci.yml.
+# Provide non-secret variables when available:
+# - RUNNER_LABEL selects the ARC runner pool (for local-kind use arc-runners-<service>).
+# - SONAR_SCANNER_HOST_URL is the scanner server URL; for local-kind ARC use
+#   http://sonarqube.sonarqube.svc.cluster.local:9000.
+# - SONAR_PUBLIC_BASE_URL is the stable public HTTPS UI/base URL and is not used
+#   for scanner or quality-gate connectivity.
+# Keep only DOPPLER_TOKEN as a repository secret. Use pull_request, not
+# pull_request_target, so untrusted fork PRs do not receive secrets.
 # =============================================================================
 
 name: ci
@@ -24,6 +31,9 @@ jobs:
       sonar-working-directory: "."
       sonar-quality-gate-timeout-minutes: 5
       sonar-extra-scan-args: ""
+      sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
+      sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
+      runner-label: ${{ vars.RUNNER_LABEL }}
       doppler-project: "sonar"
       doppler-config: "prd"
     secrets:

@@ -18,6 +18,10 @@ Notes:
 - `docker-build.yml`: new `attest-sbom` input that runs a dedicated `attest-sbom` job (GHCR login + `cosign attest --type spdxjson`) for `:latest`/default-branch pushes, plus a GHCR login added to the `sign-image` job so cosign can push signatures for **private** images.
 - `test-callers.yml`: new `docker-build` caller exercising `attest-sbom: true` against a `tests/fixtures/docker` image — build-only on PRs, full build + push + attest + self-verify on push to main.
 
+### Changed
+
+- SonarQube reusable workflow docs and examples now document the scanner/public URL split: `SONAR_SCANNER_HOST_URL` (preferred scanner and quality-gate endpoint), `SONAR_PUBLIC_BASE_URL` (public UI/base URL only), legacy `SONAR_HOST_URL` fallback, and local-kind ARC `RUNNER_LABEL` behavior.
+
 ### Fixed
 
 - `release.yml` + `dependabot-auto-merge.yml`: install the GitHub CLI (`gh`) before use on self-hosted/ARC runners, gated on `vars.RUNNER_LABEL != ''` and privilege-aware (root → direct `apt-get`, non-root → `sudo` only with passwordless sudo, else fail fast — mirrors the `gettext-base` cosign preflight, issue #102). The ARC runner image ships without `gh`, so both workflows failed there: `dependabot-auto-merge` errored `gh: command not found` (auto-merge never armed, forcing manual maintainer merges), and `release.yml` **silently skipped every release** — its `gh api` call was wrapped in `|| true`, so the missing-`gh` failure was swallowed, `pr_number` came out empty, and the run reported success while shipping nothing to `v1`.

@@ -13,15 +13,15 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
 | **Node CI** | `ci-node.yml` | Lint, test, coverage, and audit for Node.js services |
 | **Python CI** | `ci-python.yml` | Lint, test, coverage, and audit for Python services |
-| **Go CI + Sonar Bundle** | `ci-with-sonar-go.yml` | Go CI plus SonarQube scan/quality gate with Doppler-fetched secrets |
-| **Node CI + Sonar Bundle** | `ci-with-sonar-node.yml` | Node.js CI plus SonarQube scan/quality gate with Doppler-fetched secrets |
-| **Python CI + Sonar Bundle** | `ci-with-sonar-python.yml` | Python CI plus SonarQube scan/quality gate with Doppler-fetched secrets |
+| **Go CI + Sonar Bundle** | `ci-with-sonar-go.yml` | Go CI plus SonarQube scan/quality gate with Doppler token and scanner/public URL separation |
+| **Node CI + Sonar Bundle** | `ci-with-sonar-node.yml` | Node.js CI plus SonarQube scan/quality gate with Doppler token and scanner/public URL separation |
+| **Python CI + Sonar Bundle** | `ci-with-sonar-python.yml` | Python CI plus SonarQube scan/quality gate with Doppler token and scanner/public URL separation |
 | **Terraform CI** | `ci-terraform.yml` | Terraform fmt, validate, plan, and IaC audit |
 | **Docker Build** | `docker-build.yml` | Build + push images to GHCR* |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
 | **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
-| **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with quality gate enforcement |
+| **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with preflighted scanner URL and quality gate enforcement |
 
 *`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `attest-sbom`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled. The `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`), so they fail closed instead of silently passing when no signature/attestation is produced. The SBOM attestation uses cosign's legacy `.att` bundle format (`--new-bundle-format=false`) for GHCR compatibility — consumers verifying it on cosign v3 must pass the same flag (see `docs/USAGE.md`).
 
@@ -93,6 +93,21 @@ gh variable set RUNNER_LABEL --body "my-runner-label"
 ```
 
 See [docs/USAGE.md](docs/USAGE.md#runner-selection) for per-workflow input tables and self-hosted runner prerequisites.
+
+## SonarQube URL Contract
+
+SonarQube workflows separate the private scanner endpoint from the public UI/base URL:
+
+| Setting | Purpose |
+| --- | --- |
+| `SONAR_SCANNER_HOST_URL` / `sonar-scanner-host-url` | Scanner server URL used by SonarSource scan and quality-gate actions. For local-kind ARC runners, prefer `http://sonarqube.sonarqube.svc.cluster.local:9000`. |
+| `SONAR_PUBLIC_BASE_URL` / `sonar-public-base-url` | Stable public HTTPS SonarQube UI/base URL for generated links and browser callbacks. It is not used for scanner connectivity. |
+| `SONAR_HOST_URL` | Legacy scanner URL fallback kept for backward compatibility only. New callers should use `SONAR_SCANNER_HOST_URL`. |
+| `RUNNER_LABEL` / `runner-label` | Selects the runner pool. Use the appropriate ARC runner label when the scanner URL is the local-kind Service URL. |
+
+If the local ARC runtime is offline, GitHub jobs remain queued or pending until a matching runner becomes available. If a runner starts but SonarQube is unavailable, starting, or unhealthy, the preflight fails before scanning and the SonarQube check cannot turn green without contacting SonarQube.
+
+Do not add custom tunnel/auth headers to SonarSource actions; this contract assumes the configured scanner URL is directly reachable from the selected runner.
 
 ## Versioning
 

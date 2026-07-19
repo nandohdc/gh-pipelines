@@ -62,8 +62,18 @@ on:
         type: string
         required: false
         default: ""
+      sonar-scanner-host-url:
+        description: "Preferred non-secret scanner URL. Empty uses SONAR_SCANNER_HOST_URL variable/Doppler, then legacy SONAR_HOST_URL."
+        type: string
+        required: false
+        default: ""
+      sonar-public-base-url:
+        description: "Public SonarQube UI/base URL for links; not used for scanner or quality-gate calls."
+        type: string
+        required: false
+        default: ""
       doppler-project:
-        description: "Doppler project containing SONAR_TOKEN and SONAR_HOST_URL."
+        description: "Doppler project containing SONAR_TOKEN and optional Sonar URL secrets."
         type: string
         required: false
         default: "sonar"
@@ -115,48 +125,371 @@ jobs:
         uses: actions/checkout@v7
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      - name: Refuse untrusted fork secret context
+        shell: bash
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+          PULL_REQUEST_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+        run: |
+          set -euo pipefail
+
+          case "${GITHUB_EVENT_NAME}" in
+            pull_request|pull_request_target)
+              if [ -n "${PULL_REQUEST_HEAD_REPOSITORY}" ] \
+                && [ "${PULL_REQUEST_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME}" ]; then
+                echo "::error::SonarQube bundle refuses to fetch Doppler secrets for untrusted fork pull requests."
+                exit 1
+              fi
+              ;;
+          esac
 
       - name: Install Doppler CLI
         uses: dopplerhq/cli-action@4819d808ab99e5cde19a0637a16536a4038fad73 # v4.0.1
 
-      - name: Fetch Sonar credentials from Doppler
+      - name: Resolve SonarQube credentials and URLs
         shell: bash
         env:
           DOPPLER_TOKEN: ${{ secrets.DOPPLER_TOKEN }}
           DOPPLER_PROJECT: ${{ inputs.doppler-project }}
           DOPPLER_CONFIG: ${{ inputs.doppler-config }}
+          SONAR_SCANNER_HOST_URL_INPUT: ${{ inputs.sonar-scanner-host-url }}
+          SONAR_PUBLIC_BASE_URL_INPUT: ${{ inputs.sonar-public-base-url }}
+          SONAR_SCANNER_HOST_URL_VAR: ${{ vars.SONAR_SCANNER_HOST_URL }}
+          SONAR_PUBLIC_BASE_URL_VAR: ${{ vars.SONAR_PUBLIC_BASE_URL }}
         run: |
           set -euo pipefail
 
-          sonar_token="$(doppler secrets get SONAR_TOKEN --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}")"
-          sonar_host_url="$(doppler secrets get SONAR_HOST_URL --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}")"
+          reject_multiline() {
+            name="${1}"
+            value="${2}"
+            case "${value}" in
+              *$'\n'*|*$'\r'*)
+                echo "::error::${name} must be a single-line value."
+                exit 1
+                ;;
+            esac
+          }
 
-          if [ -z "${sonar_token}" ] || [ -z "${sonar_host_url}" ]; then
-            echo "::error::Doppler secret fetch returned empty SONAR_TOKEN or SONAR_HOST_URL."
+          mask_if_present() {
+            value="${1}"
+            if [ -n "${value}" ]; then
+              echo "::add-mask::${value}"
+            fi
+          }
+
+          doppler_get_required() {
+            name="${1}"
+            doppler secrets get "${name}" --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}"
+          }
+
+          doppler_get_optional() {
+            name="${1}"
+            value="$(doppler secrets get "${name}" --plain --project "${DOPPLER_PROJECT}" --config "${DOPPLER_CONFIG}" 2>/dev/null || true)"
+            printf '%s' "${value}"
+          }
+
+          reject_multiline "sonar-scanner-host-url input" "${SONAR_SCANNER_HOST_URL_INPUT}"
+          reject_multiline "sonar-public-base-url input" "${SONAR_PUBLIC_BASE_URL_INPUT}"
+          reject_multiline "SONAR_SCANNER_HOST_URL variable" "${SONAR_SCANNER_HOST_URL_VAR}"
+          reject_multiline "SONAR_PUBLIC_BASE_URL variable" "${SONAR_PUBLIC_BASE_URL_VAR}"
+
+          if [ -z "${DOPPLER_TOKEN}" ]; then
+            echo "::error::DOPPLER_TOKEN is required to fetch SONAR_TOKEN."
             exit 1
           fi
 
+          sonar_token="$(doppler_get_required SONAR_TOKEN)"
+          reject_multiline "Doppler SONAR_TOKEN" "${sonar_token}"
+          if [ -z "${sonar_token}" ]; then
+            echo "::error::Doppler secret fetch returned empty SONAR_TOKEN."
+            exit 1
+          fi
           echo "::add-mask::${sonar_token}"
-          echo "::add-mask::${sonar_host_url}"
+
+          scanner_host_url="${SONAR_SCANNER_HOST_URL_INPUT}"
+          scanner_host_url_source="input sonar-scanner-host-url"
+          if [ -z "${scanner_host_url}" ]; then
+            scanner_host_url="${SONAR_SCANNER_HOST_URL_VAR}"
+            scanner_host_url_source="repository variable SONAR_SCANNER_HOST_URL"
+          fi
+          if [ -z "${scanner_host_url}" ]; then
+            doppler_scanner_host_url="$(doppler_get_optional SONAR_SCANNER_HOST_URL)"
+            reject_multiline "Doppler SONAR_SCANNER_HOST_URL" "${doppler_scanner_host_url}"
+            mask_if_present "${doppler_scanner_host_url}"
+            scanner_host_url="${doppler_scanner_host_url}"
+            scanner_host_url_source="Doppler SONAR_SCANNER_HOST_URL"
+          fi
+          if [ -z "${scanner_host_url}" ]; then
+            doppler_legacy_host_url="$(doppler_get_required SONAR_HOST_URL)"
+            reject_multiline "Doppler SONAR_HOST_URL" "${doppler_legacy_host_url}"
+            mask_if_present "${doppler_legacy_host_url}"
+            scanner_host_url="${doppler_legacy_host_url}"
+            scanner_host_url_source="legacy Doppler SONAR_HOST_URL"
+          fi
+          if [ -z "${scanner_host_url}" ]; then
+            echo "::error::Set sonar-scanner-host-url, repository variable SONAR_SCANNER_HOST_URL, Doppler SONAR_SCANNER_HOST_URL, or legacy Doppler SONAR_HOST_URL."
+            exit 1
+          fi
+
+          public_base_url="${SONAR_PUBLIC_BASE_URL_INPUT}"
+          public_base_url_source="input sonar-public-base-url"
+          if [ -z "${public_base_url}" ]; then
+            public_base_url="${SONAR_PUBLIC_BASE_URL_VAR}"
+            public_base_url_source="repository variable SONAR_PUBLIC_BASE_URL"
+          fi
+          if [ -z "${public_base_url}" ]; then
+            doppler_public_base_url="$(doppler_get_optional SONAR_PUBLIC_BASE_URL)"
+            reject_multiline "Doppler SONAR_PUBLIC_BASE_URL" "${doppler_public_base_url}"
+            mask_if_present "${doppler_public_base_url}"
+            public_base_url="${doppler_public_base_url}"
+            public_base_url_source="Doppler SONAR_PUBLIC_BASE_URL"
+          fi
+          if [ -z "${public_base_url}" ]; then
+            public_base_url_source="unset"
+          fi
+
+          mask_if_present "${scanner_host_url}"
           {
-            echo "SONAR_TOKEN=${sonar_token}"
-            echo "SONAR_HOST_URL=${sonar_host_url}"
+            printf 'SONAR_TOKEN=%s\n' "${sonar_token}"
+            printf 'SONAR_SCANNER_HOST_URL=%s\n' "${scanner_host_url}"
+            printf 'SONAR_HOST_URL=%s\n' "${scanner_host_url}"
+            printf 'SONAR_SCANNER_HOST_URL_SOURCE=%s\n' "${scanner_host_url_source}"
+            printf 'SONAR_PUBLIC_BASE_URL=%s\n' "${public_base_url}"
+            printf 'SONAR_PUBLIC_BASE_URL_SOURCE=%s\n' "${public_base_url_source}"
           } >> "${GITHUB_ENV}"
+
+          echo "::notice::Using ${scanner_host_url_source} for SonarQube scanner and quality-gate URL."
+          if [ "${public_base_url_source}" != "unset" ]; then
+            echo "::notice::Received ${public_base_url_source} for public SonarQube links; scanner URL remains separate."
+          fi
+
+      - name: Preflight SonarQube scanner URL
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          scanner_url="${SONAR_SCANNER_HOST_URL}"
+          if [ -z "${scanner_url}" ]; then
+            echo "::error::Resolved SonarQube scanner URL is empty."
+            exit 1
+          fi
+
+          case "${scanner_url}" in
+            http://*|https://*) ;;
+            *)
+              echo "::error::Invalid SonarQube scanner URL syntax: expected http:// or https://."
+              exit 1
+              ;;
+          esac
+          case "${scanner_url}" in
+            *$'\n'*|*$'\r'*|*' '*|*'?'*|*'#'*|*@*)
+              echo "::error::Invalid SonarQube scanner URL syntax: expected a single origin/base path URL."
+              exit 1
+              ;;
+          esac
+
+          authority="${scanner_url#http://}"
+          authority="${authority#https://}"
+          authority="${authority%%/*}"
+          if [ -z "${authority}" ]; then
+            echo "::error::Invalid SonarQube scanner URL syntax: missing host."
+            exit 1
+          fi
+
+          health_base="${scanner_url%/}"
+          health_url="${health_base}/api/system/status"
+          version_url="${health_base}/api/server/version"
+          body_file="$(mktemp)"
+          header_file="$(mktemp)"
+          error_file="$(mktemp)"
+          trap 'rm -f "${body_file}" "${header_file}" "${error_file}"' EXIT
+
+          curl_endpoint() {
+            endpoint_url="${1}"
+            : > "${body_file}"
+            : > "${header_file}"
+            : > "${error_file}"
+            curl_exit=0
+            http_code="$(curl --silent --show-error --connect-timeout 5 --max-time 20 \
+              --output "${body_file}" --dump-header "${header_file}" --write-out '%{http_code}' \
+              "${endpoint_url}" 2>"${error_file}")" || curl_exit=$?
+          }
+
+          fail_for_curl_exit() {
+            curl_status="${1}"
+            case "${curl_status}" in
+              3)
+                echo "::error::Invalid SonarQube scanner URL syntax."
+                ;;
+              5|6)
+                echo "::error::DNS resolution failed for the SonarQube scanner URL host."
+                ;;
+              7)
+                echo "::error::TCP connection to the SonarQube scanner URL failed."
+                ;;
+              28)
+                echo "::error::Timed out connecting to the SonarQube scanner URL."
+                ;;
+              35|60)
+                echo "::error::TLS validation/connectivity failed for the SonarQube scanner URL."
+                ;;
+              52|56)
+                echo "::error::HTTP connectivity to the SonarQube scanner URL failed."
+                ;;
+              *)
+                echo "::error::SonarQube scanner URL preflight failed during connectivity check."
+                ;;
+            esac
+            exit 1
+          }
+
+          fail_for_http_status() {
+            status_code="${1}"
+            case "${status_code}" in
+              401|403)
+                echo "::error::SonarQube health endpoint requires authentication or proxy access headers."
+                ;;
+              502|503|504)
+                echo "::error::SonarQube tunnel or upstream is unavailable."
+                ;;
+              000)
+                echo "::error::No HTTP response from SonarQube scanner URL."
+                ;;
+              *)
+                echo "::error::SonarQube health endpoint returned HTTP ${status_code}."
+                ;;
+            esac
+            exit 1
+          }
+
+          max_attempts=3
+          sleep_seconds=5
+          attempt=1
+          while [ "${attempt}" -le "${max_attempts}" ]; do
+            curl_endpoint "${health_url}"
+            if [ "${curl_exit}" -ne 0 ]; then
+              if [ "${attempt}" -lt "${max_attempts}" ]; then
+                echo "::notice::SonarQube scanner URL preflight connectivity attempt ${attempt}/${max_attempts} failed; retrying."
+                attempt=$((attempt + 1))
+                sleep "${sleep_seconds}"
+                continue
+              fi
+              fail_for_curl_exit "${curl_exit}"
+            fi
+
+            case "${http_code}" in
+              200)
+                if grep -Eq '"status"[[:space:]]*:[[:space:]]*"UP"' "${body_file}"; then
+                  echo "::notice::SonarQube scanner URL preflight passed with system status UP."
+                  exit 0
+                fi
+                status_value="$(sed -n 's/.*"status"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                  "${body_file}" | head -n 1)"
+                case "${status_value}" in
+                  STARTING|RESTARTING|DB_MIGRATION_NEEDED|DB_MIGRATION_RUNNING)
+                    echo "::error::SonarQube is reachable but not ready: ${status_value}."
+                    exit 1
+                    ;;
+                  "")
+                    echo "::error::SonarQube system status endpoint returned an unexpected payload."
+                    exit 1
+                    ;;
+                  *)
+                    echo "::error::SonarQube is reachable but unhealthy: ${status_value}."
+                    exit 1
+                    ;;
+                esac
+                ;;
+              404)
+                curl_endpoint "${version_url}"
+                if [ "${curl_exit}" -ne 0 ]; then
+                  if [ "${attempt}" -lt "${max_attempts}" ]; then
+                    echo "::notice::SonarQube version endpoint connectivity attempt ${attempt}/${max_attempts} failed; retrying."
+                    attempt=$((attempt + 1))
+                    sleep "${sleep_seconds}"
+                    continue
+                  fi
+                  fail_for_curl_exit "${curl_exit}"
+                fi
+                if [ "${http_code}" = "200" ] && [ -s "${body_file}" ]; then
+                  echo "::notice::SonarQube scanner URL preflight passed with compatible version endpoint."
+                  exit 0
+                fi
+                fail_for_http_status "${http_code}"
+                ;;
+              502|503|504|000)
+                if [ "${attempt}" -lt "${max_attempts}" ]; then
+                  echo "::notice::SonarQube scanner URL preflight HTTP attempt ${attempt}/${max_attempts} returned ${http_code}; retrying."
+                  attempt=$((attempt + 1))
+                  sleep "${sleep_seconds}"
+                  continue
+                fi
+                fail_for_http_status "${http_code}"
+                ;;
+              *)
+                fail_for_http_status "${http_code}"
+                ;;
+            esac
+          done
+
+          echo "::error::SonarQube scanner URL preflight exhausted bounded retry policy."
+          exit 1
 
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         with:
           projectBaseDir: ${{ inputs.sonar-working-directory }}
           args: ${{ inputs.sonar-extra-scan-args }}
+
+      - name: Validate SonarQube scanner report
+        shell: bash
         env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}
+          SONAR_WORKING_DIRECTORY: ${{ inputs.sonar-working-directory }}
+        run: |
+          set -euo pipefail
+
+          case "${SONAR_WORKING_DIRECTORY}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::sonar-working-directory must be a single-line path."
+              exit 1
+              ;;
+          esac
+
+          report_file="${SONAR_WORKING_DIRECTORY}/.scannerwork/report-task.txt"
+          if [ ! -f "${report_file}" ]; then
+            echo "::error::SonarQube scanner report-task file was not created."
+            exit 1
+          fi
+          if [ ! -s "${report_file}" ]; then
+            echo "::error::SonarQube scanner report-task file is empty."
+            exit 1
+          fi
+
+          for required_key in ceTaskId ceTaskUrl serverUrl; do
+            if ! grep -q "^${required_key}=" "${report_file}"; then
+              echo "::error::SonarQube scanner report-task file is missing ${required_key}."
+              exit 1
+            fi
+          done
+
+          report_server_url="$(sed -n 's/^serverUrl=//p' "${report_file}" | head -n 1)"
+          configured_url="${SONAR_SCANNER_HOST_URL}"
+          report_server_url="${report_server_url%/}"
+          configured_url="${configured_url%/}"
+          if [ -z "${report_server_url}" ] || [ -z "${configured_url}" ]; then
+            echo "::error::Cannot compare scanner report server URL with configured scanner URL."
+            exit 1
+          fi
+          if [ "${report_server_url}" != "${configured_url}" ]; then
+            echo "::error::SonarQube scanner report serverUrl does not match configured scanner URL."
+            exit 1
+          fi
 
       - name: SonarQube quality gate
         timeout-minutes: ${{ inputs.sonar-quality-gate-timeout-minutes }}
         uses: SonarSource/sonarqube-quality-gate-action@cf038b0e0cdecfa9e56c198bbb7d21d751d62c3b # v1.2.0
         with:
           scanMetadataReportFile: ${{ inputs.sonar-working-directory }}/.scannerwork/report-task.txt
-        env:
-          SONAR_TOKEN: ${{ env.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}

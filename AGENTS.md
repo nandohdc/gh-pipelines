@@ -54,6 +54,7 @@ Release tags are the delivery mechanism:
 
 ## Testing Guidelines
 - Run `actionlint` before opening a PR.
+- Static workflow contract tests live under `scripts/*_workflow_contract_test.py`; `scripts/sonar_documentation_contract_test.py` guards the Sonar consumer docs/examples contract; `lint.yml` runs the standalone Sonar workflow, language bundle, and Sonar documentation contract tests.
 - If you changed `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-go.yml`, `ci-with-sonar-node.yml`, `ci-with-sonar-python.yml`, or `ci-terraform.yml`, ensure matching fixture coverage under `tests/fixtures/`.
 - If you changed `ci-terraform.yml` or `actions/setup-terraform`, validate Terraform fixture behavior (`fmt`, `init`, `validate`, `plan`) in `tests/fixtures/terraform/`.
 - If you changed `docker-build.yml` hardening inputs or `actions/supply-chain-attest`, verify both default-path behavior (all hardening flags false) and hardened-path behavior in a non-production repository. The `sign-image` and `attest-sbom` jobs must keep their in-workflow self-verify steps (`cosign verify` / `cosign verify-attestation`) so they fail closed when the floating `supply-chain-attest@v1` ref drifts; the `release.yml` guard that requires `attest-sbom` in the action manifest must stay in sync. The `attest-sbom` path pins the legacy `.att` bundle format because cosign v3's default new bundle format (OCI 1.1 referrers) does not round-trip reliably on GHCR: `cosign attest` (action) uses `--new-bundle-format=false --use-signing-config=false` (both required together — cosign v3 rejects `--new-bundle-format=false` alone) and `cosign verify-attestation` (workflow) uses `--new-bundle-format=false`. Keep these in sync (issue #104).
@@ -73,7 +74,7 @@ Release tags are the delivery mechanism:
 - If you changed `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep protected required-check contexts aligned (current `main` contexts: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`, `test ci-with-sonar-go caller / ci / lint`, `test ci-with-sonar-node caller / ci / lint`, `test ci-with-sonar-python caller / ci / lint`).
 - Ensure `test-callers.yml` remains green for PRs that touch reusable CI workflows.
 - For functional validation, run the workflow from a consumer repository using a branch-pinned `uses:` reference.
-- If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `examples/`).
+- If inputs/outputs change, update all coupled docs and examples in the same PR (`README.md`, `docs/USAGE.md`, `docs/INTEGRATION_CONSUMERS.md`, `examples/`) and keep `scripts/sonar_documentation_contract_test.py` green when Sonar consumer guidance changes.
 - If adding a new composite action directory under `actions/`, add/update its matching block in `.github/dependabot.yml`.
 - Keep `AGENTS.md` and `.codex/*.md` aligned when repository standards or tracker status change.
 

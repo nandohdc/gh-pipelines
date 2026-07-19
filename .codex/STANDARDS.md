@@ -65,6 +65,7 @@ These standards are mandatory for Codex changes in this repository.
 
 - Run `actionlint .github/workflows/*.yml` before completion.
 - Run `actionlint -shellcheck=shellcheck .github/workflows/*.yml` when validating inline bash coverage.
+- Run relevant static workflow contract tests under `scripts/*_workflow_contract_test.py`; `scripts/sonar_documentation_contract_test.py` guards the Sonar consumer docs/examples contract; `lint.yml` runs the standalone Sonar workflow, language bundle, and Sonar documentation contract tests.
 - If a single workflow is under active iteration, run `actionlint .github/workflows/<name>.yml`.
 - If touching `.github/workflows/security-self-scan.yml` or `.zizmor.yml`, run:
   - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`

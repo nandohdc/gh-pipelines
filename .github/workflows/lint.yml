@@ -27,6 +27,14 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Static workflow contract tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/sonar_scan_workflow_contract_test.py
+          python scripts/ci_with_sonar_workflow_contract_test.py
+          python scripts/sonar_documentation_contract_test.py
+
       - name: Install yamllint
         shell: bash
         run: |

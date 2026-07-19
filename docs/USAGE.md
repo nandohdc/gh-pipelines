@@ -53,6 +53,29 @@ Use a runner image broad enough for all jobs the workflow triggers.
 
 ---
 
+## SonarQube Scanner/Public URL Contract
+
+SonarQube workflows use two different URL roles. Keep them separate in consumer repositories:
+
+| Role | Preferred setting | Local-kind ARC value | Used by |
+| --- | --- | --- | --- |
+| Scanner server URL | `sonar-scanner-host-url` input or repository/org variable `SONAR_SCANNER_HOST_URL` | `http://sonarqube.sonarqube.svc.cluster.local:9000` | SonarSource scan action and SonarQube quality-gate action |
+| Public base URL | `sonar-public-base-url` input or repository/org variable `SONAR_PUBLIC_BASE_URL` | Stable HTTPS hostname for browser UI and generated links | Documentation/link context only; not scanner traffic |
+| Legacy scanner fallback | `SONAR_HOST_URL` secret/value | Same value as the scanner server URL when compatibility fallback is needed | Backward-compatible fallback only |
+| Runner placement | `runner-label` input fed from `RUNNER_LABEL` | ARC label that can reach the `sonarqube` Service, for example `arc-runners-<service>` | GitHub Actions runner selection |
+
+For local-kind SonarQube, set `SONAR_SCANNER_HOST_URL` to `http://sonarqube.sonarqube.svc.cluster.local:9000` and pass a `RUNNER_LABEL` value for the ARC runner scale set that runs inside the cluster. Use `SONAR_PUBLIC_BASE_URL` only for the stable public HTTPS UI/base URL; do not make scanners depend on the public tunnel when an ARC runner can use the private Service URL.
+
+Availability behavior is intentionally fail-closed:
+
+- When the local Mac/kind/ARC runtime is offline, GitHub cannot assign a matching self-hosted runner, so jobs stay queued or pending until the runner returns.
+- When a matching runner is online but SonarQube is unreachable, starting, or unhealthy, the workflow preflight fails before scanning and the quality gate cannot produce a green check without a contacted SonarQube server.
+- Untrusted fork pull requests do not receive Sonar or Doppler secrets. Bundle workflows refuse before Doppler access; examples use `pull_request` (not `pull_request_target`) and read-only permissions.
+
+Do not configure custom tunnel/auth headers in these reusable workflows. The selected contract is direct scanner reachability from the chosen runner plus a separate public base URL for UI/link generation.
+
+---
+
 ## Reusable Workflows
 
 ### ci-go.yml — Go CI Pipeline
@@ -230,9 +253,12 @@ Each bundle re-declares every input from its underlying workflow:
 | `sonar-working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
 | `sonar-quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
 | `sonar-extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
-| `doppler-project` | string | no | `sonar` | Doppler project containing `SONAR_TOKEN` and `SONAR_HOST_URL` |
+| `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate; empty falls back to `SONAR_SCANNER_HOST_URL` variable/Doppler, then legacy `SONAR_HOST_URL` in Doppler |
+| `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used by scanner calls |
+| `doppler-project` | string | no | `sonar` | Doppler project containing `SONAR_TOKEN` and optional Sonar URL secrets |
 | `doppler-config` | string | no | `prd` | Doppler config name |
 | `__test_skip_sonar_call` | boolean | no | `false` | Internal test harness escape hatch; skip Sonar job when `true` |
+| `runner-label` | string | no | `""` | Self-hosted runner label; set to the local ARC label when using the local-kind scanner Service URL |
 
 #### Secrets
 
@@ -243,8 +269,12 @@ Each bundle re-declares every input from its underlying workflow:
 #### Behavior
 
 1. `ci` job calls the underlying language workflow (`ci-go.yml`, `ci-node.yml`, or `ci-python.yml`) using local relative refs.
-2. `sonar-scan` job installs `dopplerhq/cli-action`, fetches and masks `SONAR_TOKEN` / `SONAR_HOST_URL`, then runs Sonar scan + quality gate.
-3. Sonar status-check context in consumer repositories is expected to appear as `ci / sonar-scan`.
+2. `sonar-scan` job refuses untrusted fork PR contexts before Doppler access, installs `dopplerhq/cli-action`, fetches and masks `SONAR_TOKEN` plus any Doppler URL values, then resolves the scanner URL in order: input `sonar-scanner-host-url`, repository/org variable `SONAR_SCANNER_HOST_URL`, Doppler `SONAR_SCANNER_HOST_URL`, legacy Doppler `SONAR_HOST_URL`.
+3. The optional public base URL resolves from input `sonar-public-base-url`, repository/org variable `SONAR_PUBLIC_BASE_URL`, or Doppler `SONAR_PUBLIC_BASE_URL`; it is diagnostic/link context only and is not used by scanner or quality-gate calls.
+4. Scanner URL preflight validates syntax, DNS/connectivity, `/api/system/status` readiness (with `/api/server/version` fallback), and bounded retries before scan; `.scannerwork/report-task.txt` must exist and match the resolved scanner URL before the quality gate runs.
+5. For local-kind ARC deployments, pass `runner-label: ${{ vars.RUNNER_LABEL }}` and set `SONAR_SCANNER_HOST_URL` to `http://sonarqube.sonarqube.svc.cluster.local:9000` so scan and quality gate traffic stay private.
+6. If the local ARC runtime is offline, jobs stay queued/pending. If the runner is available but SonarQube is unreachable or unhealthy, the preflight fails before scanning and cannot yield a green SonarQube check.
+7. Sonar status-check context in consumer repositories is expected to appear as `ci / sonar-scan`.
 
 #### Example
 
@@ -261,6 +291,9 @@ jobs:
       sonar-working-directory: "."
       sonar-quality-gate-timeout-minutes: 5
       sonar-extra-scan-args: ""
+      sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
+      sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
+      runner-label: ${{ vars.RUNNER_LABEL }}
       doppler-project: "sonar"
       doppler-config: "prd"
     secrets:
@@ -514,7 +547,7 @@ jobs:
 
 ### sonar-scan.yml — SonarQube Scan + Quality Gate
 
-Runs SonarQube analysis and waits for quality gate status. The workflow always executes both scan and quality gate steps; a failed gate fails the job.
+Runs SonarQube analysis and waits for quality gate status. The workflow resolves a scanner URL, preflights it before scanning, validates `.scannerwork/report-task.txt`, and then runs the quality gate against the same scanner URL. A failed preflight, scan, report validation, or gate fails the job.
 
 #### Inputs
 
@@ -523,20 +556,29 @@ Runs SonarQube analysis and waits for quality gate status. The workflow always e
 | `working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
 | `quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
 | `extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
+| `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate |
+| `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used for scanner calls |
+| `runner-label` | string | no | `""` | Self-hosted runner label. Empty uses `ubuntu-latest` |
 
 #### Secrets
 
 | Secret | Required | Description |
 | --- | --- | --- |
 | `SONAR_TOKEN` | **yes** | SonarQube token |
-| `SONAR_HOST_URL` | **yes** | SonarQube server URL |
+| `SONAR_SCANNER_HOST_URL` | no | Optional scanner URL secret, preferred over legacy `SONAR_HOST_URL` when the input is empty |
+| `SONAR_PUBLIC_BASE_URL` | no | Optional public SonarQube UI/base URL secret; not used by scanner calls |
+| `SONAR_HOST_URL` | no | Legacy scanner URL fallback |
 
 #### Consumer Prerequisites
 
-1. Create repository secrets `SONAR_TOKEN` and `SONAR_HOST_URL`.
-2. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
-3. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
-4. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
+1. Create repository secret `SONAR_TOKEN`.
+2. Provide one scanner URL source, in order of precedence: non-secret input `sonar-scanner-host-url`, secret `SONAR_SCANNER_HOST_URL`, or legacy secret `SONAR_HOST_URL`.
+3. For local-kind ARC scanning, set `SONAR_SCANNER_HOST_URL` to `http://sonarqube.sonarqube.svc.cluster.local:9000` and pass `runner-label: ${{ vars.RUNNER_LABEL }}` for the ARC runner label that can reach the Service.
+4. Optionally provide `sonar-public-base-url` / `SONAR_PUBLIC_BASE_URL` for UI/link terminology; scanner and quality-gate actions do not use it.
+5. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
+6. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
+7. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
+8. Expect queued/pending jobs while the local ARC runtime is offline; expect fail-fast preflight errors, not a green check, when a runner is available but SonarQube is unreachable or unhealthy.
 
 #### Example
 
@@ -554,8 +596,13 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       extra-scan-args: ""
+      sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
+      sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
+      runner-label: ${{ vars.RUNNER_LABEL }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}
+      SONAR_PUBLIC_BASE_URL: ${{ secrets.SONAR_PUBLIC_BASE_URL }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 ```
 
