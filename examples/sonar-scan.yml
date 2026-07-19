@@ -2,7 +2,11 @@
 # Example: SonarQube scan caller workflow
 # =============================================================================
 # Copy this file to your repository at .github/workflows/sonar.yml.
-# Requires repository secrets SONAR_TOKEN and SONAR_HOST_URL.
+# Requires repository secret SONAR_TOKEN and one scanner URL source:
+# - preferred: repository variable SONAR_SCANNER_HOST_URL, or
+# - fallback: repository secret SONAR_SCANNER_HOST_URL, or
+# - legacy fallback: repository secret SONAR_HOST_URL.
+# SONAR_PUBLIC_BASE_URL is optional and is not used for scanner connectivity.
 # =============================================================================
 
 name: sonar
@@ -21,6 +25,10 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       extra-scan-args: ""
+      sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
+      sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}
+      SONAR_PUBLIC_BASE_URL: ${{ secrets.SONAR_PUBLIC_BASE_URL }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}

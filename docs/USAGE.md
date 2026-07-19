@@ -514,7 +514,7 @@ jobs:
 
 ### sonar-scan.yml — SonarQube Scan + Quality Gate
 
-Runs SonarQube analysis and waits for quality gate status. The workflow always executes both scan and quality gate steps; a failed gate fails the job.
+Runs SonarQube analysis and waits for quality gate status. The workflow resolves a scanner URL, preflights it before scanning, validates `.scannerwork/report-task.txt`, and then runs the quality gate against the same scanner URL. A failed preflight, scan, report validation, or gate fails the job.
 
 #### Inputs
 
@@ -523,20 +523,27 @@ Runs SonarQube analysis and waits for quality gate status. The workflow always e
 | `working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
 | `quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
 | `extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
+| `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate |
+| `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used for scanner calls |
+| `runner-label` | string | no | `""` | Self-hosted runner label. Empty uses `ubuntu-latest` |
 
 #### Secrets
 
 | Secret | Required | Description |
 | --- | --- | --- |
 | `SONAR_TOKEN` | **yes** | SonarQube token |
-| `SONAR_HOST_URL` | **yes** | SonarQube server URL |
+| `SONAR_SCANNER_HOST_URL` | no | Optional scanner URL secret, preferred over legacy `SONAR_HOST_URL` when the input is empty |
+| `SONAR_PUBLIC_BASE_URL` | no | Optional public SonarQube UI/base URL secret; not used by scanner calls |
+| `SONAR_HOST_URL` | no | Legacy scanner URL fallback |
 
 #### Consumer Prerequisites
 
-1. Create repository secrets `SONAR_TOKEN` and `SONAR_HOST_URL`.
-2. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
-3. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
-4. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
+1. Create repository secret `SONAR_TOKEN`.
+2. Provide one scanner URL source, in order of precedence: non-secret input `sonar-scanner-host-url`, secret `SONAR_SCANNER_HOST_URL`, or legacy secret `SONAR_HOST_URL`.
+3. Optionally provide `sonar-public-base-url` / `SONAR_PUBLIC_BASE_URL` for UI/link terminology; scanner and quality-gate actions do not use it.
+4. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
+5. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
+6. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
 
 #### Example
 
@@ -554,8 +561,12 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       extra-scan-args: ""
+      sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
+      sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}
+      SONAR_PUBLIC_BASE_URL: ${{ secrets.SONAR_PUBLIC_BASE_URL }}
       SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
 ```
 
