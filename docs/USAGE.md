@@ -230,7 +230,9 @@ Each bundle re-declares every input from its underlying workflow:
 | `sonar-working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
 | `sonar-quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
 | `sonar-extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
-| `doppler-project` | string | no | `sonar` | Doppler project containing `SONAR_TOKEN` and `SONAR_HOST_URL` |
+| `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate; empty falls back to `SONAR_SCANNER_HOST_URL` variable/Doppler, then legacy `SONAR_HOST_URL` in Doppler |
+| `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used by scanner calls |
+| `doppler-project` | string | no | `sonar` | Doppler project containing `SONAR_TOKEN` and optional Sonar URL secrets |
 | `doppler-config` | string | no | `prd` | Doppler config name |
 | `__test_skip_sonar_call` | boolean | no | `false` | Internal test harness escape hatch; skip Sonar job when `true` |
 
@@ -243,8 +245,10 @@ Each bundle re-declares every input from its underlying workflow:
 #### Behavior
 
 1. `ci` job calls the underlying language workflow (`ci-go.yml`, `ci-node.yml`, or `ci-python.yml`) using local relative refs.
-2. `sonar-scan` job installs `dopplerhq/cli-action`, fetches and masks `SONAR_TOKEN` / `SONAR_HOST_URL`, then runs Sonar scan + quality gate.
-3. Sonar status-check context in consumer repositories is expected to appear as `ci / sonar-scan`.
+2. `sonar-scan` job refuses untrusted fork PR contexts before Doppler access, installs `dopplerhq/cli-action`, fetches and masks `SONAR_TOKEN` plus any Doppler URL values, then resolves the scanner URL in order: input `sonar-scanner-host-url`, repository/org variable `SONAR_SCANNER_HOST_URL`, Doppler `SONAR_SCANNER_HOST_URL`, legacy Doppler `SONAR_HOST_URL`.
+3. The optional public base URL resolves from input `sonar-public-base-url`, repository/org variable `SONAR_PUBLIC_BASE_URL`, or Doppler `SONAR_PUBLIC_BASE_URL`; it is diagnostic/link context only and is not used by scanner or quality-gate calls.
+4. Scanner URL preflight validates syntax, DNS/connectivity, `/api/system/status` readiness (with `/api/server/version` fallback), and bounded retries before scan; `.scannerwork/report-task.txt` must exist and match the resolved scanner URL before the quality gate runs.
+5. Sonar status-check context in consumer repositories is expected to appear as `ci / sonar-scan`.
 
 #### Example
 
@@ -261,6 +265,8 @@ jobs:
       sonar-working-directory: "."
       sonar-quality-gate-timeout-minutes: 5
       sonar-extra-scan-args: ""
+      sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
+      sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
       doppler-project: "sonar"
       doppler-config: "prd"
     secrets:

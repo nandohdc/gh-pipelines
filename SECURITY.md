@@ -27,7 +27,7 @@ When reporting, include:
 
 ## Sonar Credential Handling (Doppler-backed bundles)
 
-The `ci-with-sonar-*` bundle workflows fetch `SONAR_TOKEN` and `SONAR_HOST_URL` from Doppler at runtime.
+The `ci-with-sonar-*` bundle workflows fetch `SONAR_TOKEN` from Doppler at runtime and resolve scanner/public SonarQube URLs from non-secret inputs or variables before falling back to Doppler URL secrets.
 Consumer repositories should store only a read-only `DOPPLER_TOKEN` secret.
 
 Rotation and leak response policy:

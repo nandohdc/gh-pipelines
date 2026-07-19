@@ -37,7 +37,7 @@ Consumer repos using `ci-with-sonar-*` should only store:
 
 - `DOPPLER_TOKEN` (read-only service token scoped to Doppler project `sonar`, config `prd`)
 
-The bundles fetch `SONAR_TOKEN` and `SONAR_HOST_URL` from Doppler at runtime, mask both values in logs, and export them only for the active workflow run.
+The bundles always fetch `SONAR_TOKEN` from Doppler and resolve the scanner URL from non-secret input/variable values before falling back to Doppler `SONAR_SCANNER_HOST_URL` or legacy Doppler `SONAR_HOST_URL`. Secret URL values are masked in logs and exported only for the active workflow run.
 
 ## Branch Protection Helper
 
