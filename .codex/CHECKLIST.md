@@ -56,7 +56,9 @@ Use this checklist before finishing any Codex task in this repository.
 - If interface changed, update:
   - `README.md`
   - `docs/USAGE.md`
+  - `docs/INTEGRATION_CONSUMERS.md` when consumer Sonar/canary guidance changes
   - relevant `examples/*.yml`
+  - `scripts/sonar_documentation_contract_test.py` expectations when Sonar docs/examples change
 - Keep `.codex/README.md` and `.codex/CONTEXT.md` aligned with current issue phase status.
 - Keep `AGENTS.md` aligned with `.codex/*.md` when repository standards are adjusted.
 

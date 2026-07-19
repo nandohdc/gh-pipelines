@@ -94,6 +94,21 @@ gh variable set RUNNER_LABEL --body "my-runner-label"
 
 See [docs/USAGE.md](docs/USAGE.md#runner-selection) for per-workflow input tables and self-hosted runner prerequisites.
 
+## SonarQube URL Contract
+
+SonarQube workflows separate the private scanner endpoint from the public UI/base URL:
+
+| Setting | Purpose |
+| --- | --- |
+| `SONAR_SCANNER_HOST_URL` / `sonar-scanner-host-url` | Scanner server URL used by SonarSource scan and quality-gate actions. For local-kind ARC runners, prefer `http://sonarqube.sonarqube.svc.cluster.local:9000`. |
+| `SONAR_PUBLIC_BASE_URL` / `sonar-public-base-url` | Stable public HTTPS SonarQube UI/base URL for generated links and browser callbacks. It is not used for scanner connectivity. |
+| `SONAR_HOST_URL` | Legacy scanner URL fallback kept for backward compatibility only. New callers should use `SONAR_SCANNER_HOST_URL`. |
+| `RUNNER_LABEL` / `runner-label` | Selects the runner pool. Use the appropriate ARC runner label when the scanner URL is the local-kind Service URL. |
+
+If the local ARC runtime is offline, GitHub jobs remain queued or pending until a matching runner becomes available. If a runner starts but SonarQube is unavailable, starting, or unhealthy, the preflight fails before scanning and the SonarQube check cannot turn green without contacting SonarQube.
+
+Do not add custom tunnel/auth headers to SonarSource actions; this contract assumes the configured scanner URL is directly reachable from the selected runner.
+
 ## Versioning
 
 This repository uses **tag-based versioning**:

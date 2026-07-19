@@ -39,6 +39,24 @@ Consumer repos using `ci-with-sonar-*` should only store:
 
 The bundles always fetch `SONAR_TOKEN` from Doppler and resolve the scanner URL from non-secret input/variable values before falling back to Doppler `SONAR_SCANNER_HOST_URL` or legacy Doppler `SONAR_HOST_URL`. Secret URL values are masked in logs and exported only for the active workflow run.
 
+Recommended non-secret variables for local-kind consumers (passed to reusable workflows as `runner-label`, `sonar-scanner-host-url`, and `sonar-public-base-url` inputs):
+
+| Variable | Recommended value | Purpose |
+| --- | --- | --- |
+| `RUNNER_LABEL` | ARC runner scale-set label for the consumer, for example `arc-runners-<service>` | Places scan and quality-gate work on runners that can reach the in-cluster Service |
+| `SONAR_SCANNER_HOST_URL` | `http://sonarqube.sonarqube.svc.cluster.local:9000` | Private scanner server URL used by both SonarSource scan and quality-gate actions |
+| `SONAR_PUBLIC_BASE_URL` | Stable public HTTPS SonarQube hostname | Browser UI/base URL for generated links; not used by scanner traffic |
+
+`SONAR_HOST_URL` remains a legacy scanner URL fallback for older consumers. Do not set it to a public UI hostname unless that hostname is the selected scanner endpoint; new local-kind consumers should prefer `SONAR_SCANNER_HOST_URL`.
+
+## Local ARC Availability Behavior
+
+When the local Mac/kind/ARC runtime is offline, GitHub has no matching self-hosted runner for `RUNNER_LABEL`; jobs queue, stay queued, or remain pending until the runner returns. When a matching runner is available but SonarQube is unreachable, starting, or unhealthy, the preflight fails before SonarSource actions run and the SonarQube quality gate cannot report green without contacting SonarQube.
+
+Use `pull_request` rather than `pull_request_target` in consumer examples. Untrusted fork pull requests do not receive `DOPPLER_TOKEN` or Sonar secrets, and the bundle workflows refuse before Doppler access.
+
+Do not configure custom tunnel/auth headers in consumer workflows; direct scanner reachability from the selected runner is the supported contract.
+
 ## Branch Protection Helper
 
 Use `scripts/enforce-sonar-branch-protection.sh` from this repository to append the Sonar required-check context without replacing existing required checks:
