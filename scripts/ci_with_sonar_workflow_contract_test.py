@@ -98,6 +98,7 @@ def test_preflight_order_failure_classes_and_bounded_retry() -> None:
             text,
             "      - name: Resolve SonarQube credentials and URLs",
             "      - name: Preflight SonarQube scanner URL",
+            "      - name: Setup Node for Sonar JS analyzer",
             "      - name: SonarQube scan",
             "      - name: Validate SonarQube scanner report",
             "      - name: SonarQube quality gate",
@@ -176,6 +177,8 @@ def test_actions_are_pinned_and_runtime_env_is_not_referenced_statically() -> No
             pattern = rf"uses: {re.escape(action)}@[0-9a-f]{{40}} # v[0-9]+\.[0-9]+\.[0-9]+"
             assert re.search(pattern, text), f"{path} {action} must be pinned to full SHA with version comment"
         assert_contains(text, "uses: actions/checkout@v7", f"{path} official checkout should stay tag-pinned")
+        assert_contains(text, "uses: actions/setup-node@v7", f"{path} Sonar job should provide Node for JS/CSS analysis")
+        assert_contains(text, 'node-version: "22"', f"{path} Sonar job should install a supported Node runtime")
         assert_not_contains(text, "SONAR_TOKEN: ${{ env.SONAR_TOKEN }}", f"{path} runtime GITHUB_ENV token must not be referenced via expression env")
         assert_not_contains(text, "SONAR_HOST_URL: ${{ env.SONAR_HOST_URL }}", f"{path} runtime GITHUB_ENV URL must not be referenced via expression env")
 

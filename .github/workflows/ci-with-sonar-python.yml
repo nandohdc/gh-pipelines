@@ -438,6 +438,11 @@ jobs:
           echo "::error::SonarQube scanner URL preflight exhausted bounded retry policy."
           exit 1
 
+      - name: Setup Node for Sonar JS analyzer
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@713881670b6b3676cda39549040e2d88c70d582e # v8.2.0
         with:
