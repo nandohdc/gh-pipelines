@@ -86,6 +86,7 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         text,
         "      - name: Resolve SonarQube URLs",
         "      - name: Preflight SonarQube scanner URL",
+        "      - name: Install Sonar scanner signature dependencies",
         "      - name: Setup Node for Sonar JS analyzer",
         "      - name: SonarQube scan",
         "      - name: Validate SonarQube scanner report",
@@ -106,6 +107,22 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         "reachable but unhealthy",
     ):
         assert_contains(preflight, expected, f"preflight does not distinguish: {expected}")
+
+
+def test_scanner_signature_verification_dependencies_are_installed() -> None:
+    text = read(WORKFLOW)
+    install = step_block(text, "Install Sonar scanner signature dependencies")
+    for expected in (
+        "command -v dirmngr",
+        "apt-get -o Acquire::Retries=3 install -y --no-install-recommends dirmngr",
+        "not root and passwordless sudo is unavailable",
+    ):
+        assert_contains(install, expected, f"signature dependency step missing guard: {expected}")
+    assert_not_contains(
+        text,
+        "skipSignatureVerification: true",
+        "scanner signature verification must stay enabled; install dirmngr instead",
+    )
 
 
 def test_scan_and_quality_gate_use_resolved_scanner_url() -> None:
@@ -226,6 +243,7 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
 def main() -> None:
     test_workflow_url_contract()
     test_preflight_runs_before_scan_and_distinguishes_failures()
+    test_scanner_signature_verification_dependencies_are_installed()
     test_scan_and_quality_gate_use_resolved_scanner_url()
     test_report_task_validation_is_fail_closed()
     test_runner_label_fork_safety_and_permissions()

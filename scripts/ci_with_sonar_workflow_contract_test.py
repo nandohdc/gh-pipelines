@@ -98,6 +98,7 @@ def test_preflight_order_failure_classes_and_bounded_retry() -> None:
             text,
             "      - name: Resolve SonarQube credentials and URLs",
             "      - name: Preflight SonarQube scanner URL",
+            "      - name: Install Sonar scanner signature dependencies",
             "      - name: Setup Node for Sonar JS analyzer",
             "      - name: SonarQube scan",
             "      - name: Validate SonarQube scanner report",
@@ -122,6 +123,22 @@ def test_preflight_order_failure_classes_and_bounded_retry() -> None:
             "preflight exhausted bounded retry policy",
         ):
             assert_contains(preflight, expected, f"{path} preflight missing guard: {expected}")
+
+
+def test_scanner_signature_verification_dependencies_are_installed() -> None:
+    for path, text in workflow_texts():
+        install = step_block(text, "Install Sonar scanner signature dependencies")
+        for expected in (
+            "command -v dirmngr",
+            "apt-get -o Acquire::Retries=3 install -y --no-install-recommends dirmngr",
+            "not root and passwordless sudo is unavailable",
+        ):
+            assert_contains(install, expected, f"{path} signature dependency step missing guard: {expected}")
+        assert_not_contains(
+            text,
+            "skipSignatureVerification: true",
+            f"{path} must keep scanner signature verification enabled; install dirmngr instead",
+        )
 
 
 def test_report_task_validation_is_fail_closed_before_quality_gate() -> None:
@@ -214,6 +231,7 @@ def test_docs_examples_and_lint_contract_are_updated() -> None:
 def main() -> None:
     test_all_bundle_workflows_expose_same_url_contract()
     test_preflight_order_failure_classes_and_bounded_retry()
+    test_scanner_signature_verification_dependencies_are_installed()
     test_report_task_validation_is_fail_closed_before_quality_gate()
     test_fork_safety_secret_handling_and_permissions()
     test_actions_are_pinned_and_runtime_env_is_not_referenced_statically()
