@@ -209,7 +209,9 @@ def test_repository_sonar_workflow_uses_internal_scanner_url() -> None:
     assert_contains(sonar_project, "sonar.projectKey=nandohdc_gh-pipelines_7ee6bd5a-8a54-4996-a00d-668315012f38", "repo Sonar project key must stay stable")
     assert_contains(sonar_project, "sonar.projectName=gh-pipelines", "repo Sonar project name must be set")
     assert_contains(sonar_project, "sonar.sources=.github,actions,examples,scripts,docs,README.md,SECURITY.md,CHANGELOG.md,AGENTS.md,CLAUDE.md,GEMINI.md", "repo Sonar sources should be scoped to active library paths")
-    assert_contains(sonar_project, "sonar.tests=tests", "repo Sonar tests should be classified separately")
+    assert_contains(sonar_project, "sonar.tests=tests,scripts", "repo Sonar tests should be classified separately")
+    assert_contains(sonar_project, "sonar.test.inclusions=scripts/*_test.py", "contract tests must be classified as test code, not coverage-eligible sources")
+    assert_contains(sonar_project, ",scripts/*_test.py", "contract tests must be excluded from Sonar sources")
     assert_contains(sonar_project, "**/node_modules/**", "repo Sonar exclusions should avoid dependency directories")
 
     assert_contains(workflow, "name: sonar", "missing internal Sonar workflow")
