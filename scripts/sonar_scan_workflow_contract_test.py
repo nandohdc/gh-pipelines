@@ -13,8 +13,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = ROOT / ".github" / "workflows" / "sonar-scan.yml"
+REPOSITORY_WORKFLOW = ROOT / ".github" / "workflows" / "sonar.yml"
 EXAMPLE = ROOT / "examples" / "sonar-scan.yml"
 LINT_WORKFLOW = ROOT / ".github" / "workflows" / "lint.yml"
+PROJECT = ROOT / "sonar-project.properties"
 
 
 def read(path: Path) -> str:
@@ -84,6 +86,8 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         text,
         "      - name: Resolve SonarQube URLs",
         "      - name: Preflight SonarQube scanner URL",
+        "      - name: Install Sonar scanner signature dependencies",
+        "      - name: Setup Node for Sonar JS analyzer",
         "      - name: SonarQube scan",
         "      - name: Validate SonarQube scanner report",
         "      - name: SonarQube quality gate",
@@ -103,6 +107,22 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         "reachable but unhealthy",
     ):
         assert_contains(preflight, expected, f"preflight does not distinguish: {expected}")
+
+
+def test_scanner_signature_verification_dependencies_are_installed() -> None:
+    text = read(WORKFLOW)
+    install = step_block(text, "Install Sonar scanner signature dependencies")
+    for expected in (
+        "command -v dirmngr",
+        "apt-get -o Acquire::Retries=3 install -y --no-install-recommends dirmngr",
+        "not root and passwordless sudo is unavailable",
+    ):
+        assert_contains(install, expected, f"signature dependency step missing guard: {expected}")
+    assert_not_contains(
+        text,
+        "skipSignatureVerification: true",
+        "scanner signature verification must stay enabled; install dirmngr instead",
+    )
 
 
 def test_scan_and_quality_gate_use_resolved_scanner_url() -> None:
@@ -175,6 +195,29 @@ def test_external_actions_are_pinned() -> None:
         pattern = rf"uses: {re.escape(action)}@[0-9a-f]{{40}} # v[0-9]+\.[0-9]+\.[0-9]+"
         assert re.search(pattern, text), f"{action} must be pinned to a full SHA with a version comment"
     assert_contains(text, "uses: actions/checkout@v7", "official checkout action should stay tag-pinned for readability")
+    assert_contains(text, "uses: actions/setup-node@v7", "standalone Sonar scan should provide Node for JS/CSS analysis")
+    assert_contains(text, 'node-version: "22"', "standalone Sonar scan should install a supported Node runtime")
+
+
+def test_repository_sonar_workflow_uses_internal_scanner_url() -> None:
+    workflow = read(REPOSITORY_WORKFLOW)
+    sonar_project = read(PROJECT)
+
+    assert_contains(sonar_project, "sonar.projectKey=nandohdc_gh-pipelines_7ee6bd5a-8a54-4996-a00d-668315012f38", "repo Sonar project key must stay stable")
+    assert_contains(sonar_project, "sonar.projectName=gh-pipelines", "repo Sonar project name must be set")
+    assert_contains(sonar_project, "sonar.sources=.github,actions,examples,scripts,docs,README.md,SECURITY.md,CHANGELOG.md,AGENTS.md,CLAUDE.md,GEMINI.md", "repo Sonar sources should be scoped to active library paths")
+    assert_contains(sonar_project, "sonar.tests=tests", "repo Sonar tests should be classified separately")
+    assert_contains(sonar_project, "**/node_modules/**", "repo Sonar exclusions should avoid dependency directories")
+
+    assert_contains(workflow, "name: sonar", "missing internal Sonar workflow")
+    assert_contains(workflow, "pull_request:", "internal Sonar workflow must run on PRs")
+    assert_contains(workflow, "branches:\n      - main", "internal Sonar workflow must target main")
+    assert_contains(workflow, "uses: ./.github/workflows/sonar-scan.yml", "internal Sonar workflow should reuse the library workflow")
+    assert_contains(workflow, 'sonar-scanner-host-url: "http://sonarqube.sonarqube.svc.cluster.local:9000"', "internal Sonar workflow must use the private local-kind Service URL")
+    assert_contains(workflow, "runner-label: ${{ vars.RUNNER_LABEL }}", "internal Sonar workflow must use the repo runner variable")
+    assert_contains(workflow, "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", "internal Sonar workflow must pass only the token secret")
+    assert_not_contains(workflow, "SONAR_HOST_URL", "internal Sonar workflow must not use the stale legacy host secret")
+    assert_not_contains(workflow, "trycloudflare.com", "internal Sonar workflow must not use disposable Quick Tunnel URLs")
 
 
 def test_docs_example_and_lint_contract_are_updated() -> None:
@@ -200,11 +243,13 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
 def main() -> None:
     test_workflow_url_contract()
     test_preflight_runs_before_scan_and_distinguishes_failures()
+    test_scanner_signature_verification_dependencies_are_installed()
     test_scan_and_quality_gate_use_resolved_scanner_url()
     test_report_task_validation_is_fail_closed()
     test_runner_label_fork_safety_and_permissions()
     test_no_hardcoded_urls_or_quick_tunnel_active_config()
     test_external_actions_are_pinned()
+    test_repository_sonar_workflow_uses_internal_scanner_url()
     test_docs_example_and_lint_contract_are_updated()
     print("sonar_scan_workflow_contract_test: ok")
 

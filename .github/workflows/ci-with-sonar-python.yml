@@ -438,6 +438,52 @@ jobs:
           echo "::error::SonarQube scanner URL preflight exhausted bounded retry policy."
           exit 1
 
+      - name: Install Sonar scanner signature dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if command -v dirmngr >/dev/null 2>&1; then
+            dirmngr --version | head -n 1
+            exit 0
+          fi
+
+          if ! command -v apt-get >/dev/null 2>&1; then
+            echo "dirmngr is missing and apt-get is unavailable. Install dirmngr in the runner image." >&2
+            exit 1
+          fi
+
+          retry() {
+            local attempt
+            for attempt in 1 2 3 4 5; do
+              if "$@"; then
+                return 0
+              fi
+              echo "attempt ${attempt} failed: $*" >&2
+              sleep "$((attempt * 10))"
+            done
+            echo "still failing after 5 attempts: $*" >&2
+            return 1
+          }
+
+          if [ "$(id -u)" -eq 0 ]; then
+            retry apt-get -o Acquire::Retries=3 update
+            retry apt-get -o Acquire::Retries=3 install -y --no-install-recommends dirmngr
+          elif sudo -n true 2>/dev/null; then
+            retry sudo apt-get -o Acquire::Retries=3 update
+            retry sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends dirmngr
+          else
+            echo "dirmngr is missing and cannot be installed: not root and passwordless sudo is unavailable." >&2
+            exit 1
+          fi
+
+          dirmngr --version | head -n 1
+
+      - name: Setup Node for Sonar JS analyzer
+        uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+
       - name: SonarQube scan
         uses: SonarSource/sonarqube-scan-action@22918119ff8e1ca75a623e15c8296b6ea4fbe28f # v8.2.1
         with:

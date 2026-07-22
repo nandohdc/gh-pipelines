@@ -1,0 +1,29 @@
+name: sonar
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sonar:
+    name: sonar
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/sonar-scan.yml
+    with:
+      working-directory: "."
+      quality-gate-timeout-minutes: 5
+      sonar-scanner-host-url: "http://sonarqube.sonarqube.svc.cluster.local:9000"
+      runner-label: ${{ vars.RUNNER_LABEL }}
+    secrets:
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
