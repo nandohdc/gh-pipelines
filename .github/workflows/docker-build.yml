@@ -161,6 +161,7 @@ jobs:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
           generate-sbom: "true"
+          platforms: ${{ inputs.platforms }}
           sbom-artifact-suffix: ${{ github.run_id }}
 
   sign-image:
@@ -258,6 +259,7 @@ jobs:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
           attest-sbom: "true"
+          platforms: ${{ inputs.platforms }}
           sbom-artifact-suffix: attest-${{ github.run_id }}
 
       # Fail closed: verify the attestation in the workflow itself. If the resolved

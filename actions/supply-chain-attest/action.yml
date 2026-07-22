@@ -24,6 +24,10 @@ inputs:
     description: "Emit the SPDX SBOM as a cosign attestation (cosign attest --type spdxjson) on the image digest. Requires registry push credentials (GHCR login) and id-token: write."
     required: false
     default: "false"
+  platforms:
+    description: "Comma-separated target platforms the image was built for (e.g. linux/amd64,linux/arm64). The SBOM is generated for the first listed platform. Empty lets syft auto-detect from the runner's platform."
+    required: false
+    default: ""
   sbom-artifact-suffix:
     description: "Suffix appended to SBOM artifact names."
     required: false
@@ -40,9 +44,30 @@ inputs:
 runs:
   using: "composite"
   steps:
+    # Syft resolves an image index at the runner's host platform by default, which
+    # fails when the runner arch (e.g. arm64 self-hosted) is not among the built
+    # platforms. Pin SYFT_PLATFORM to the first built platform so SBOM generation
+    # is deterministic regardless of runner arch. An empty input yields an empty
+    # SYFT_PLATFORM, which is syft's own default (no platform constraint), so
+    # auto-detect behavior is preserved. Step output (not GITHUB_ENV) keeps the
+    # zizmor github-env gate clean.
+    - name: Resolve SBOM platform
+      id: sbom-platform
+      if: ${{ inputs.generate-sbom == 'true' || inputs.attest-sbom == 'true' }}
+      shell: bash
+      env:
+        PLATFORMS: ${{ inputs.platforms }}
+      run: |
+        set -euo pipefail
+        platform="${PLATFORMS%%,*}"
+        echo "platform=${platform}" >> "$GITHUB_OUTPUT"
+        echo "SBOM platform pinned to '${platform}' (empty = syft auto-detect)"
+
     - name: Generate SPDX SBOM
       if: ${{ inputs.generate-sbom == 'true' || inputs.attest-sbom == 'true' }}
       uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      env:
+        SYFT_PLATFORM: ${{ steps.sbom-platform.outputs.platform }}
       with:
         image: ${{ inputs.image-name }}@${{ inputs.image-digest }}
         format: spdx-json
@@ -54,6 +79,8 @@ runs:
     - name: Generate CycloneDX SBOM
       if: ${{ inputs.generate-sbom == 'true' }}
       uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+      env:
+        SYFT_PLATFORM: ${{ steps.sbom-platform.outputs.platform }}
       with:
         image: ${{ inputs.image-name }}@${{ inputs.image-digest }}
         format: cyclonedx-json
