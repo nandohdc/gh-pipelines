@@ -149,7 +149,10 @@ def test_report_task_validation_is_fail_closed_before_quality_gate() -> None:
             "was not created",
             "file is empty",
             "for required_key in ceTaskId ceTaskUrl serverUrl; do",
-            "report serverUrl does not match configured scanner URL",
+            "disposable Quick Tunnel URL",
+            "Normalizing scanner report URLs to the resolved scanner URL",
+            'grep -qx "serverUrl=${configured_url}" "${report_file}"',
+            'grep -qx "ceTaskUrl=${configured_url}/api/ce/task?id=${ce_task_id}" "${report_file}"',
             "exit 1",
         ):
             assert_contains(validation, expected, f"{path} missing report-task validation: {expected}")

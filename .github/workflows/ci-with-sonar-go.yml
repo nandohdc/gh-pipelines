@@ -569,18 +569,47 @@ jobs:
             fi
           done
 
+          ce_task_id="$(sed -n 's/^ceTaskId=//p' "${report_file}" | head -n 1)"
           report_server_url="$(sed -n 's/^serverUrl=//p' "${report_file}" | head -n 1)"
           configured_url="${SONAR_SCANNER_HOST_URL}"
           report_server_url="${report_server_url%/}"
           configured_url="${configured_url%/}"
-          if [ -z "${report_server_url}" ] || [ -z "${configured_url}" ]; then
+          if [ -z "${ce_task_id}" ] || [ -z "${report_server_url}" ] || [ -z "${configured_url}" ]; then
             echo "::error::Cannot compare scanner report server URL with configured scanner URL."
             exit 1
           fi
+
+          quick_tunnel_domain="try""cloudflare.com"
+          case "${report_server_url}" in
+            *"${quick_tunnel_domain}"*)
+              echo "::error::SonarQube scanner report points at a disposable Quick Tunnel URL."
+              exit 1
+              ;;
+          esac
+
           if [ "${report_server_url}" != "${configured_url}" ]; then
-            echo "::error::SonarQube scanner report serverUrl does not match configured scanner URL."
-            exit 1
+            # The server writes its configured public base URL (sonar.core.serverBaseUrl)
+            # into report-task.txt when one is set. The quality-gate action reads ceTaskUrl
+            # from this file, so rewrite both URLs to the resolved scanner URL that is
+            # reachable from this runner.
+            echo "::notice::Normalizing scanner report URLs to the resolved scanner URL."
+            tmp_report="$(mktemp)"
+            awk -v scanner_url="${configured_url}" -v ce_task_id="${ce_task_id}" '
+              /^serverUrl=/ {
+                print "serverUrl=" scanner_url
+                next
+              }
+              /^ceTaskUrl=/ {
+                print "ceTaskUrl=" scanner_url "/api/ce/task?id=" ce_task_id
+                next
+              }
+              { print }
+            ' "${report_file}" >"${tmp_report}"
+            mv "${tmp_report}" "${report_file}"
           fi
+
+          grep -qx "serverUrl=${configured_url}" "${report_file}"
+          grep -qx "ceTaskUrl=${configured_url}/api/ce/task?id=${ce_task_id}" "${report_file}"
 
       - name: SonarQube quality gate
         timeout-minutes: ${{ inputs.sonar-quality-gate-timeout-minutes }}
