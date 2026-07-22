@@ -121,6 +121,7 @@ jobs:
           generate-sbom: "true"
           sign-image: "true"
           generate-provenance: "true"
+          platforms: ${{ inputs.platforms }}
           sbom-artifact-suffix: ${{ github.ref_name }}
 
       - name: Attach SBOM assets to GitHub Release

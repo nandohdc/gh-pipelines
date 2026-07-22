@@ -681,6 +681,7 @@ Default tags: `sha-<short>`, `latest` (on default branch), `ref:tag`.
 | `generate-provenance` | no | `false` | Generate SLSA provenance attestation |
 | `sign-image` | no | `false` | Sign image by digest using cosign keyless mode |
 | `attest-sbom` | no | `false` | Emit the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson --new-bundle-format=false --use-signing-config=false`) on the image digest |
+| `platforms` | no | `""` | Comma-separated platforms the image was built for (e.g. `linux/amd64,linux/arm64`). SBOMs are generated for the first listed platform, so runner arch no longer has to match the image. Empty lets syft auto-detect from the runner's platform |
 | `sbom-artifact-suffix` | no | `run` | Suffix appended to SBOM artifact names |
 | `sbom-spdx-output` | no | `sbom.spdx.json` | Output path for SPDX SBOM |
 | `sbom-cyclonedx-output` | no | `sbom.cyclonedx.json` | Output path for CycloneDX SBOM |
