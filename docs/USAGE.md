@@ -556,6 +556,7 @@ Runs SonarQube analysis and waits for quality gate status. The workflow resolves
 | `working-directory` | string | no | `.` | Directory containing source and `sonar-project.properties` |
 | `quality-gate-timeout-minutes` | number | no | `5` | Minutes to wait for quality gate result |
 | `extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
+| `pre-scan-command` | string | no | `""` | Shell command executed after checkout and tool setup but before the scan; use it to generate coverage reports (e.g. `pytest --cov --cov-report=xml`) |
 | `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate |
 | `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used for scanner calls |
 | `runner-label` | string | no | `""` | Self-hosted runner label. Empty uses `ubuntu-latest` |
@@ -596,6 +597,7 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       extra-scan-args: ""
+      pre-scan-command: ""
       sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
       sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
       runner-label: ${{ vars.RUNNER_LABEL }}

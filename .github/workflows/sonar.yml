@@ -24,6 +24,9 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       runner-label: ${{ vars.RUNNER_LABEL }}
+      pre-scan-command: |
+        python -m pip install pytest pytest-cov
+        python -m pytest scripts/contract_lib_test.py --cov=scripts.contract_lib --cov-report=xml --cov-report=term-missing
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       # Resolve the scanner URL from a secret instead of hardcoding the in-cluster

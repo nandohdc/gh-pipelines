@@ -9,3 +9,5 @@ __pycache__/
 *.env
 .claude/settings.local.json
 .gemini/.env
+.coverage
+coverage.xml
