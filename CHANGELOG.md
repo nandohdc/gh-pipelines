@@ -14,6 +14,10 @@ Notes:
 
 ### Added
 
+- `scripts/contract_lib.py`: extracted shared helper functions (`read`, `assert_contains`, `assert_not_contains`, `assert_order`, `step_block`) from the three contract test scripts into a coverable module that produces SonarQube coverage data.
+- `scripts/test_contract_lib.py`: pytest unit tests for `contract_lib.py` with 100% coverage, wired into `lint.yml` and used by the self-scan to feed coverage to SonarQube.
+- `sonar-scan.yml`: new optional `pre-scan-command` input that runs an arbitrary shell command in `working-directory` before the scan step. Default empty (no-op). Used internally by `sonar.yml` to generate coverage data.
+- `sonar-project.properties`: `sonar.python.coverage.reportPaths=coverage.xml` so the Python analyzer imports the pytest-cov Cobertura report.
 - Internal `sonar` workflow for this repository, using the reusable `sonar-scan.yml` workflow. It resolves the scanner URL from the `SONAR_HOST_URL` (legacy) / `SONAR_SCANNER_HOST_URL` (preferred) repo secret — the public SonarQube URL — instead of hardcoding the in-cluster Service URL, so the scan runs on GitHub-hosted runners as well as the self-hosted ARC pool.
 - `supply-chain-attest` action: new `attest-sbom` input that emits the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson`) on the image digest, so downstream consumers can `cosign verify-attestation --type spdxjson --new-bundle-format=false`. Adds an `envsubst`/`gettext-base` preflight before `cosign-installer` (robust cosign install on self-hosted/ARC runners) and widens the SPDX-generate + cosign-install gates to cover the attest path (`nandohdc/financial-events-ingestion-api#78`).
 - `docker-build.yml`: new `attest-sbom` input that runs a dedicated `attest-sbom` job (GHCR login + `cosign attest --type spdxjson`) for `:latest`/default-branch pushes, plus a GHCR login added to the `sign-image` job so cosign can push signatures for **private** images.
@@ -21,6 +25,10 @@ Notes:
 
 ### Changed
 
+- `scripts/sonar_scan_workflow_contract_test.py`, `scripts/ci_with_sonar_workflow_contract_test.py`, `scripts/sonar_documentation_contract_test.py`: import helpers from `contract_lib` instead of defining them inline.
+- `sonar.yml`: forwards `pre-scan-command` that installs `pytest`/`pytest-cov` and runs `test_contract_lib.py` with `--cov-report=xml` before the SonarQube scan.
+- `docs/USAGE.md`, `examples/sonar-scan.yml`, `README.md`: document the new `pre-scan-command` input.
+- `lint.yml`: runs `test_contract_lib.py` unit tests in addition to the static contract tests.
 - `sonar-project.properties`: pin `sonar.python.version=3.12` so Sonar analyzes the repo's Python (contract tests, CI fixtures) against the actual runtime instead of defaulting to "compatible with all Python 3" and running less precise analysis.
 - SonarQube reusable workflow docs and examples now document the scanner/public URL split: `SONAR_SCANNER_HOST_URL` (preferred scanner and quality-gate endpoint), `SONAR_PUBLIC_BASE_URL` (public UI/base URL only), legacy `SONAR_HOST_URL` fallback, and local-kind ARC `RUNNER_LABEL` behavior.
 

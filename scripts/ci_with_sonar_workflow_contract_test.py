@@ -9,9 +9,19 @@ one fail-closed local-kind scanner connectivity contract.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.contract_lib import (
+    assert_contains,
+    assert_not_contains,
+    assert_order,
+    read,
+    step_block,
+)
 WORKFLOWS = [
     ROOT / ".github" / "workflows" / "ci-with-sonar-go.yml",
     ROOT / ".github" / "workflows" / "ci-with-sonar-node.yml",
@@ -23,37 +33,6 @@ EXAMPLES = [
     ROOT / "examples" / "ci-with-sonar-node.yml",
     ROOT / "examples" / "ci-with-sonar-python.yml",
 ]
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def assert_contains(text: str, needle: str, message: str) -> None:
-    assert needle in text, message
-
-
-def assert_not_contains(text: str, needle: str, message: str) -> None:
-    assert needle not in text, message
-
-
-def assert_order(text: str, *needles: str) -> None:
-    positions: list[int] = []
-    for needle in needles:
-        position = text.find(needle)
-        assert position != -1, f"missing expected text: {needle!r}"
-        positions.append(position)
-    assert positions == sorted(positions), "expected ordering not found: " + " -> ".join(needles)
-
-
-def step_block(text: str, step_name: str) -> str:
-    marker = f"      - name: {step_name}\n"
-    start = text.find(marker)
-    assert start != -1, f"missing step {step_name!r}"
-    next_start = text.find("\n      - name: ", start + len(marker))
-    if next_start == -1:
-        return text[start:]
-    return text[start:next_start]
 
 
 def workflow_texts() -> list[tuple[Path, str]]:

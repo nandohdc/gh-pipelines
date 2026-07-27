@@ -9,9 +9,13 @@ SonarQube workflows.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.contract_lib import assert_contains, assert_not_contains, read
 README = ROOT / "README.md"
 USAGE = ROOT / "docs" / "USAGE.md"
 INTEGRATION_CONSUMERS = ROOT / "docs" / "INTEGRATION_CONSUMERS.md"
@@ -24,18 +28,6 @@ EXAMPLES = [
 ]
 DOCS = [README, USAGE, INTEGRATION_CONSUMERS]
 LOCAL_KIND_SCANNER_URL = "http://sonarqube.sonarqube.svc.cluster.local:9000"
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def assert_contains(text: str, needle: str, message: str) -> None:
-    assert needle in text, message
-
-
-def assert_not_contains(text: str, needle: str, message: str) -> None:
-    assert needle not in text, message
 
 
 def test_docs_distinguish_scanner_public_legacy_and_runner_contract() -> None:
@@ -82,6 +74,7 @@ def test_usage_input_and_secret_tables_include_new_contract() -> None:
     for expected in (
         "| `sonar-scanner-host-url` | string | no | `\"\"` | Preferred non-secret scanner URL used by both scan and quality gate",
         "| `sonar-public-base-url` | string | no | `\"\"` | Optional public SonarQube UI/base URL for generated links; not used by scanner calls |",
+        "| `pre-scan-command` | string | no | `\"\"` | Shell command executed after checkout and tool setup but before the scan; use it to generate coverage reports (e.g. `pytest --cov --cov-report=xml`) |",
         "| `runner-label` | string | no | `\"\"` | Self-hosted runner label; set to the local ARC label when using the local-kind scanner Service URL |",
         "| `SONAR_SCANNER_HOST_URL` | no | Optional scanner URL secret, preferred over legacy `SONAR_HOST_URL` when the input is empty |",
         "| `SONAR_PUBLIC_BASE_URL` | no | Optional public SonarQube UI/base URL secret; not used by scanner calls |",
@@ -118,6 +111,11 @@ def test_examples_show_fork_safe_local_kind_contract() -> None:
         )
 
     sonar_example = read(EXAMPLES[-1])
+    assert_contains(
+        sonar_example,
+        'pre-scan-command: ""',
+        "standalone example missing pre-scan-command input",
+    )
     for expected in (
         "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
         "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}",
@@ -154,6 +152,15 @@ def test_lint_workflow_runs_documentation_contract() -> None:
     )
 
 
+def test_lint_workflow_runs_sonar_coverage_tests() -> None:
+    lint = read(LINT_WORKFLOW)
+    assert_contains(
+        lint,
+        "python -m pytest scripts/test_contract_lib.py",
+        "lint workflow should run the contract_lib unit tests",
+    )
+
+
 def main() -> None:
     test_docs_distinguish_scanner_public_legacy_and_runner_contract()
     test_docs_state_local_arc_queue_and_fail_fast_behavior()
@@ -161,6 +168,7 @@ def main() -> None:
     test_examples_show_fork_safe_local_kind_contract()
     test_docs_avoid_ambiguous_app_url_and_header_injection_guidance()
     test_lint_workflow_runs_documentation_contract()
+    test_lint_workflow_runs_sonar_coverage_tests()
     print("sonar_documentation_contract_test: ok")
 
 

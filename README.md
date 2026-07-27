@@ -21,7 +21,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
 | **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
-| **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with preflighted scanner URL and quality gate enforcement |
+| **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with preflighted scanner URL, quality gate enforcement, and optional pre-scan command hook |
 
 *`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `attest-sbom`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled. The `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`), so they fail closed instead of silently passing when no signature/attestation is produced. The SBOM attestation uses cosign's legacy `.att` bundle format (`--new-bundle-format=false`) for GHCR compatibility — consumers verifying it on cosign v3 must pass the same flag (see `docs/USAGE.md`).
 

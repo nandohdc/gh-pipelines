@@ -9,45 +9,24 @@ SonarQube scanner connectivity.
 from __future__ import annotations
 
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
+from scripts.contract_lib import (
+    assert_contains,
+    assert_not_contains,
+    assert_order,
+    read,
+    step_block,
+)
 WORKFLOW = ROOT / ".github" / "workflows" / "sonar-scan.yml"
 REPOSITORY_WORKFLOW = ROOT / ".github" / "workflows" / "sonar.yml"
 EXAMPLE = ROOT / "examples" / "sonar-scan.yml"
 LINT_WORKFLOW = ROOT / ".github" / "workflows" / "lint.yml"
 PROJECT = ROOT / "sonar-project.properties"
-
-
-def read(path: Path) -> str:
-    return path.read_text(encoding="utf-8")
-
-
-def assert_contains(text: str, needle: str, message: str) -> None:
-    assert needle in text, message
-
-
-def assert_not_contains(text: str, needle: str, message: str) -> None:
-    assert needle not in text, message
-
-
-def assert_order(text: str, *needles: str) -> None:
-    positions: list[int] = []
-    for needle in needles:
-        position = text.find(needle)
-        assert position != -1, f"missing expected text: {needle!r}"
-        positions.append(position)
-    assert positions == sorted(positions), "expected ordering not found: " + " -> ".join(needles)
-
-
-def step_block(text: str, step_name: str) -> str:
-    marker = f"      - name: {step_name}\n"
-    start = text.find(marker)
-    assert start != -1, f"missing step {step_name!r}"
-    next_start = text.find("\n      - name: ", start + len(marker))
-    if next_start == -1:
-        return text[start:]
-    return text[start:next_start]
 
 
 def test_workflow_url_contract() -> None:
@@ -56,6 +35,7 @@ def test_workflow_url_contract() -> None:
     for expected in (
         "sonar-scanner-host-url:",
         "sonar-public-base-url:",
+        "pre-scan-command:",
         "SONAR_SCANNER_HOST_URL:",
         "SONAR_PUBLIC_BASE_URL:",
         "SONAR_HOST_URL:",
@@ -88,6 +68,7 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         "      - name: Preflight SonarQube scanner URL",
         "      - name: Install Sonar scanner signature dependencies",
         "      - name: Setup Node for Sonar JS analyzer",
+        "      - name: Pre-scan command",
         "      - name: SonarQube scan",
         "      - name: Validate SonarQube scanner report",
         "      - name: SonarQube quality gate",
@@ -212,6 +193,7 @@ def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
     assert_contains(sonar_project, "sonar.tests=tests,scripts", "repo Sonar tests should be classified separately")
     assert_contains(sonar_project, "sonar.test.inclusions=scripts/*_test.py", "contract tests must be classified as test code, not coverage-eligible sources")
     assert_contains(sonar_project, "sonar.python.version=3.12", "repo Sonar config must pin the analyzed Python version for precise analysis")
+    assert_contains(sonar_project, "sonar.python.coverage.reportPaths=coverage.xml", "repo Sonar config must set coverage report path for contract_lib coverage")
     assert_contains(sonar_project, ",scripts/*_test.py", "contract tests must be excluded from Sonar sources")
     assert_contains(sonar_project, "**/node_modules/**", "repo Sonar exclusions should avoid dependency directories")
 
@@ -224,6 +206,8 @@ def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
     assert_contains(workflow, "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", "internal Sonar workflow must forward the Sonar token secret")
     assert_contains(workflow, "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}", "internal Sonar workflow must forward the preferred scanner URL secret")
     assert_contains(workflow, "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}", "internal Sonar workflow must forward the public scanner URL secret so scans work on GitHub-hosted runners")
+    assert_contains(workflow, "pre-scan-command:", "internal Sonar workflow must pass the pre-scan command")
+    assert_contains(workflow, "pytest scripts/test_contract_lib.py", "internal Sonar workflow must run contract_lib unit tests for coverage")
     assert_not_contains(workflow, "trycloudflare.com", "internal Sonar workflow must not use disposable Quick Tunnel URLs")
 
 
@@ -234,6 +218,7 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
     for expected in (
         "sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}",
         "sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}",
+        'pre-scan-command: ""',
         "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}",
         "SONAR_PUBLIC_BASE_URL: ${{ secrets.SONAR_PUBLIC_BASE_URL }}",
         "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}",

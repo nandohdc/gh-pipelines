@@ -35,6 +35,13 @@ jobs:
           python scripts/ci_with_sonar_workflow_contract_test.py
           python scripts/sonar_documentation_contract_test.py
 
+      - name: Contract library unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install pytest pytest-cov
+          python -m pytest scripts/test_contract_lib.py -q --cov=scripts.contract_lib --cov-report=term-missing
+
       - name: Install yamllint
         shell: bash
         run: |
