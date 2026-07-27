@@ -21,7 +21,12 @@ Notes:
 
 ### Changed
 
+- `sonar-project.properties`: pin `sonar.python.version=3.12` so Sonar analyzes the repo's Python (contract tests, CI fixtures) against the actual runtime instead of defaulting to "compatible with all Python 3" and running less precise analysis.
 - SonarQube reusable workflow docs and examples now document the scanner/public URL split: `SONAR_SCANNER_HOST_URL` (preferred scanner and quality-gate endpoint), `SONAR_PUBLIC_BASE_URL` (public UI/base URL only), legacy `SONAR_HOST_URL` fallback, and local-kind ARC `RUNNER_LABEL` behavior.
+
+### Removed
+
+- `GEMINI.md`: removed the Gemini CLI guidance file; `AGENTS.md`, `CLAUDE.md`, and `.codex/*.md` remain the authoritative agent-instruction sources. Dropped `GEMINI.md` from `sonar.sources` in `sonar-project.properties` (and the matching contract-test assertion) so Sonar no longer references a missing file.
 
 ### Fixed
 
