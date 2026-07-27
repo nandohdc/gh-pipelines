@@ -156,7 +156,7 @@ def test_lint_workflow_runs_sonar_coverage_tests() -> None:
     lint = read(LINT_WORKFLOW)
     assert_contains(
         lint,
-        "python -m pytest scripts/test_contract_lib.py",
+        "python -m pytest scripts/contract_lib_test.py",
         "lint workflow should run the contract_lib unit tests",
     )
 

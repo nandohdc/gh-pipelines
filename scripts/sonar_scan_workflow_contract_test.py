@@ -207,7 +207,7 @@ def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
     assert_contains(workflow, "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}", "internal Sonar workflow must forward the preferred scanner URL secret")
     assert_contains(workflow, "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}", "internal Sonar workflow must forward the public scanner URL secret so scans work on GitHub-hosted runners")
     assert_contains(workflow, "pre-scan-command:", "internal Sonar workflow must pass the pre-scan command")
-    assert_contains(workflow, "pytest scripts/test_contract_lib.py", "internal Sonar workflow must run contract_lib unit tests for coverage")
+    assert_contains(workflow, "pytest scripts/contract_lib_test.py", "internal Sonar workflow must run contract_lib unit tests for coverage")
     assert_not_contains(workflow, "trycloudflare.com", "internal Sonar workflow must not use disposable Quick Tunnel URLs")
 
 

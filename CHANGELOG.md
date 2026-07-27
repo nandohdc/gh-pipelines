@@ -15,7 +15,7 @@ Notes:
 ### Added
 
 - `scripts/contract_lib.py`: extracted shared helper functions (`read`, `assert_contains`, `assert_not_contains`, `assert_order`, `step_block`) from the three contract test scripts into a coverable module that produces SonarQube coverage data.
-- `scripts/test_contract_lib.py`: pytest unit tests for `contract_lib.py` with 100% coverage, wired into `lint.yml` and used by the self-scan to feed coverage to SonarQube.
+- `scripts/contract_lib_test.py`: pytest unit tests for `contract_lib.py` with 100% coverage, wired into `lint.yml` and used by the self-scan to feed coverage to SonarQube.
 - `sonar-scan.yml`: new optional `pre-scan-command` input that runs an arbitrary shell command in `working-directory` before the scan step. Default empty (no-op). Used internally by `sonar.yml` to generate coverage data.
 - `sonar-project.properties`: `sonar.python.coverage.reportPaths=coverage.xml` so the Python analyzer imports the pytest-cov Cobertura report.
 - Internal `sonar` workflow for this repository, using the reusable `sonar-scan.yml` workflow. It resolves the scanner URL from the `SONAR_HOST_URL` (legacy) / `SONAR_SCANNER_HOST_URL` (preferred) repo secret — the public SonarQube URL — instead of hardcoding the in-cluster Service URL, so the scan runs on GitHub-hosted runners as well as the self-hosted ARC pool.
