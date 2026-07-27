@@ -23,7 +23,12 @@ jobs:
     with:
       working-directory: "."
       quality-gate-timeout-minutes: 5
-      sonar-scanner-host-url: "http://sonarqube.sonarqube.svc.cluster.local:9000"
       runner-label: ${{ vars.RUNNER_LABEL }}
     secrets:
       SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      # Resolve the scanner URL from a secret instead of hardcoding the in-cluster
+      # Service URL, so the scan works on GitHub-hosted runners as well as ARC. The
+      # public URL is stored as the SONAR_HOST_URL repo secret (legacy fallback);
+      # SONAR_SCANNER_HOST_URL is forwarded too and takes precedence when set.
+      SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}
+      SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
