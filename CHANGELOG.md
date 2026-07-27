@@ -14,14 +14,19 @@ Notes:
 
 ### Added
 
-- Internal `sonar` workflow for this repository, using the reusable `sonar-scan.yml` workflow against the local-kind internal SonarQube service URL.
+- Internal `sonar` workflow for this repository, using the reusable `sonar-scan.yml` workflow. It resolves the scanner URL from the `SONAR_HOST_URL` (legacy) / `SONAR_SCANNER_HOST_URL` (preferred) repo secret — the public SonarQube URL — instead of hardcoding the in-cluster Service URL, so the scan runs on GitHub-hosted runners as well as the self-hosted ARC pool.
 - `supply-chain-attest` action: new `attest-sbom` input that emits the SPDX SBOM as a cosign attestation (`cosign attest --type spdxjson`) on the image digest, so downstream consumers can `cosign verify-attestation --type spdxjson --new-bundle-format=false`. Adds an `envsubst`/`gettext-base` preflight before `cosign-installer` (robust cosign install on self-hosted/ARC runners) and widens the SPDX-generate + cosign-install gates to cover the attest path (`nandohdc/financial-events-ingestion-api#78`).
 - `docker-build.yml`: new `attest-sbom` input that runs a dedicated `attest-sbom` job (GHCR login + `cosign attest --type spdxjson`) for `:latest`/default-branch pushes, plus a GHCR login added to the `sign-image` job so cosign can push signatures for **private** images.
 - `test-callers.yml`: new `docker-build` caller exercising `attest-sbom: true` against a `tests/fixtures/docker` image — build-only on PRs, full build + push + attest + self-verify on push to main.
 
 ### Changed
 
+- `sonar-project.properties`: pin `sonar.python.version=3.12` so Sonar analyzes the repo's Python (contract tests, CI fixtures) against the actual runtime instead of defaulting to "compatible with all Python 3" and running less precise analysis.
 - SonarQube reusable workflow docs and examples now document the scanner/public URL split: `SONAR_SCANNER_HOST_URL` (preferred scanner and quality-gate endpoint), `SONAR_PUBLIC_BASE_URL` (public UI/base URL only), legacy `SONAR_HOST_URL` fallback, and local-kind ARC `RUNNER_LABEL` behavior.
+
+### Removed
+
+- `GEMINI.md`: removed the Gemini CLI guidance file; `AGENTS.md`, `CLAUDE.md`, and `.codex/*.md` remain the authoritative agent-instruction sources. Dropped `GEMINI.md` from `sonar.sources` in `sonar-project.properties` (and the matching contract-test assertion) so Sonar no longer references a missing file.
 
 ### Fixed
 
