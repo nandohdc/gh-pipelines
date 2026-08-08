@@ -199,6 +199,7 @@ def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
 
     assert_contains(workflow, "name: sonar", "missing internal Sonar workflow")
     assert_contains(workflow, "pull_request:", "internal Sonar workflow must run on PRs")
+    assert_contains(workflow, "if: github.actor != 'dependabot[bot]'", "internal Sonar workflow must skip Dependabot PRs which lack secrets")
     assert_contains(workflow, "branches:\n      - main", "internal Sonar workflow must target main")
     assert_contains(workflow, "uses: ./.github/workflows/sonar-scan.yml", "internal Sonar workflow should reuse the library workflow")
     assert_not_contains(workflow, "svc.cluster.local", "internal Sonar workflow must not hardcode the in-cluster URL, which only resolves on ARC runners")
