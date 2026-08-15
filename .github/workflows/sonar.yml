@@ -25,6 +25,7 @@ jobs:
       working-directory: "."
       quality-gate-timeout-minutes: 5
       runner-label: ${{ vars.RUNNER_LABEL }}
+      pre-scan-python-version: "3.12"
       pre-scan-command: |
         python -m pip install pytest pytest-cov
         python -m pytest scripts/contract_lib_test.py --cov=scripts.contract_lib --cov-report=xml --cov-report=term-missing

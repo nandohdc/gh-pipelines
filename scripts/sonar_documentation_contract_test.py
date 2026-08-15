@@ -75,6 +75,7 @@ def test_usage_input_and_secret_tables_include_new_contract() -> None:
         "| `sonar-scanner-host-url` | string | no | `\"\"` | Preferred non-secret scanner URL used by both scan and quality gate",
         "| `sonar-public-base-url` | string | no | `\"\"` | Optional public SonarQube UI/base URL for generated links; not used by scanner calls |",
         "| `pre-scan-command` | string | no | `\"\"` | Shell command executed after checkout and tool setup but before the scan; use it to generate coverage reports (e.g. `pytest --cov --cov-report=xml`) |",
+        "| `pre-scan-python-version` | string | no | `\"\"` | Optional Python version installed before `pre-scan-command`; empty skips Python setup |",
         "| `runner-label` | string | no | `\"\"` | Self-hosted runner label; set to the local ARC label when using the local-kind scanner Service URL |",
         "| `SONAR_SCANNER_HOST_URL` | no | Optional scanner URL secret, preferred over legacy `SONAR_HOST_URL` when the input is empty |",
         "| `SONAR_PUBLIC_BASE_URL` | no | Optional public SonarQube UI/base URL secret; not used by scanner calls |",
@@ -115,6 +116,11 @@ def test_examples_show_fork_safe_local_kind_contract() -> None:
         sonar_example,
         'pre-scan-command: ""',
         "standalone example missing pre-scan-command input",
+    )
+    assert_contains(
+        sonar_example,
+        'pre-scan-python-version: ""',
+        "standalone example missing pre-scan-python-version input",
     )
     for expected in (
         "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}",
