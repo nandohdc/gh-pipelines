@@ -25,6 +25,7 @@
 #         quality-gate-timeout-minutes: 5
 #         extra-scan-args: ""
 #         pre-scan-command: ""
+#         pre-scan-python-version: ""
 #         sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
 #         sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
 #       secrets:
@@ -54,6 +55,12 @@ on:
         default: ""
       pre-scan-command:
         description: "Shell command executed after checkout and tool setup but before the scan; use it to generate coverage reports."
+        type: string
+        required: false
+        default: ""
+      pre-scan-python-version:
+        description: >-
+          Optional Python version installed before pre-scan-command. Empty skips Python setup.
         type: string
         required: false
         default: ""
@@ -369,6 +376,12 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: "22"
+
+      - name: Setup Python for pre-scan command
+        if: inputs.pre-scan-python-version != ''
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.pre-scan-python-version }}
 
       - name: Pre-scan command
         if: inputs.pre-scan-command != ''

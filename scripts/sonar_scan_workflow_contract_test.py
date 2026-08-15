@@ -36,6 +36,7 @@ def test_workflow_url_contract() -> None:
         "sonar-scanner-host-url:",
         "sonar-public-base-url:",
         "pre-scan-command:",
+        "pre-scan-python-version:",
         "SONAR_SCANNER_HOST_URL:",
         "SONAR_PUBLIC_BASE_URL:",
         "SONAR_HOST_URL:",
@@ -68,6 +69,7 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         "      - name: Preflight SonarQube scanner URL",
         "      - name: Install Sonar scanner signature dependencies",
         "      - name: Setup Node for Sonar JS analyzer",
+        "      - name: Setup Python for pre-scan command",
         "      - name: Pre-scan command",
         "      - name: SonarQube scan",
         "      - name: Validate SonarQube scanner report",
@@ -181,6 +183,15 @@ def test_external_actions_are_pinned() -> None:
     assert_contains(text, "uses: actions/checkout@v7", "official checkout action should stay tag-pinned for readability")
     assert_contains(text, "uses: actions/setup-node@v7", "standalone Sonar scan should provide Node for JS/CSS analysis")
     assert_contains(text, 'node-version: "22"', "standalone Sonar scan should install a supported Node runtime")
+    assert_contains(text, "uses: actions/setup-python@v7", "optional pre-scan Python setup should use the official action")
+
+    python_setup = step_block(text, "Setup Python for pre-scan command")
+    assert_contains(python_setup, "if: inputs.pre-scan-python-version != ''", "Python setup must remain default-off")
+    assert_contains(
+        python_setup,
+        "python-version: ${{ inputs.pre-scan-python-version }}",
+        "Python setup must use the caller-selected version",
+    )
 
 
 def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
@@ -204,6 +215,7 @@ def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
     assert_contains(workflow, "uses: ./.github/workflows/sonar-scan.yml", "internal Sonar workflow should reuse the library workflow")
     assert_not_contains(workflow, "svc.cluster.local", "internal Sonar workflow must not hardcode the in-cluster URL, which only resolves on ARC runners")
     assert_contains(workflow, "runner-label: ${{ vars.RUNNER_LABEL }}", "internal Sonar workflow must use the repo runner variable")
+    assert_contains(workflow, 'pre-scan-python-version: "3.12"', "internal Sonar workflow must install Python for coverage on minimal ARC runners")
     assert_contains(workflow, "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", "internal Sonar workflow must forward the Sonar token secret")
     assert_contains(workflow, "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}", "internal Sonar workflow must forward the preferred scanner URL secret")
     assert_contains(workflow, "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}", "internal Sonar workflow must forward the public scanner URL secret so scans work on GitHub-hosted runners")
@@ -220,6 +232,7 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
         "sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}",
         "sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}",
         'pre-scan-command: ""',
+        'pre-scan-python-version: ""',
         "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}",
         "SONAR_PUBLIC_BASE_URL: ${{ secrets.SONAR_PUBLIC_BASE_URL }}",
         "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}",
