@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Python service CI + Sonar bundle caller workflow
+# Example: Python service CI + Sonar bundle Caller workflow
 # =============================================================================
-# Copy this file to your Python repository at .github/workflows/ci.yml.
+# Copy this Caller workflow to your Python Workflow consumer at .github/workflows/ci.yml.
 # Provide non-secret variables when available:
 # - RUNNER_LABEL selects the ARC runner pool (for local-kind use arc-runners-<service>).
 # - SONAR_SCANNER_HOST_URL is the scanner server URL; for local-kind ARC use

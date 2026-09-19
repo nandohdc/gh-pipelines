@@ -5,7 +5,7 @@
 # On pull requests: build only (no push).
 # On push to default branch: build + push.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     docker:
 #       uses: nandohdc/gh-pipelines/.github/workflows/docker-build.yml@v1

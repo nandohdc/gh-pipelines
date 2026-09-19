@@ -9,11 +9,11 @@
 #   2. secrets.SONAR_SCANNER_HOST_URL
 #   3. legacy secrets.SONAR_HOST_URL
 #
-# The optional public base URL is accepted for caller contract compatibility and
+# The optional public base URL is accepted for Caller workflow contract compatibility and
 # diagnostics only. Scanner and quality-gate actions always use the resolved
 # scanner URL.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     sonar:
 #       uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@v1

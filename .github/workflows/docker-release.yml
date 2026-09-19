@@ -7,7 +7,7 @@
 #
 # Trigger: usually on tag push (refs/tags/*) after CI passes.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     release:
 #       uses: nandohdc/gh-pipelines/.github/workflows/docker-release.yml@v1

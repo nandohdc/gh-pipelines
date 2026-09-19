@@ -5,7 +5,7 @@
 # On pull requests: dry-run only.
 # On push to main: actual deploy with --atomic.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     deploy:
 #       uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1

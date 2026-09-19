@@ -4,7 +4,7 @@
 # Runs ci-python and a SonarQube scan in parallel. Sonar credentials are fetched
 # at runtime from Doppler using a required DOPPLER_TOKEN secret.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     ci:
 #       uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-python.yml@v1

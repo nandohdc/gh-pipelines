@@ -1,8 +1,8 @@
 # =============================================================================
-# Example: Go service CI caller workflow
+# Example: Go service CI Caller workflow
 # =============================================================================
-# Copy this file to your Go service repository at .github/workflows/ci.yml
-# and adjust the inputs to match your project.
+# Copy this Caller workflow to your Go Workflow consumer at
+# .github/workflows/ci.yml and adjust the inputs to match your project.
 # =============================================================================
 
 name: ci

@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Docker build caller workflow (lean/default)
+# Example: Docker build Caller workflow (lean/default)
 # =============================================================================
-# Copy this file to your service repository at .github/workflows/docker.yml
+# Copy this Caller workflow to your service Workflow consumer at .github/workflows/docker.yml
 # and adjust the inputs to match your project.
 # =============================================================================
 

@@ -4,7 +4,7 @@
 # Runs lint, test, coverage threshold checks, and optional dependency audit
 # for Python projects.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     ci:
 #       uses: nandohdc/gh-pipelines/.github/workflows/ci-python.yml@v1

@@ -1,0 +1,38 @@
+# gh-pipelines
+
+gh-pipelines publishes reusable GitHub Actions artifacts for other repositories
+to adopt through versioned references.
+
+## Language
+
+**Consumer repository**:
+An external repository that adopts a published gh-pipelines artifact through a versioned reference.
+_Avoid_: consumer, downstream repository
+
+**Workflow consumer**:
+A Consumer repository with at least one Workflow invocation.
+_Avoid_: caller repository
+
+**Composite-action consumer**:
+A Consumer repository that adopts a composite action directly, without necessarily being a Workflow consumer.
+_Avoid_: workflow consumer when the repository only uses a composite action
+
+**Caller workflow**:
+A workflow file owned by a Workflow consumer that contains one or more Workflow invocations.
+_Avoid_: caller when the file and a job could both be meant
+
+**Workflow invocation (or Caller job)**:
+A single job-level use of a reusable workflow by a Caller workflow.
+_Avoid_: caller when the repository, workflow file, or job must be distinguished
+
+**Canary consumer repository**:
+A Workflow consumer whose owner has agreed to use it as a monitored integration-smoke target.
+_Avoid_: canary when the repository relationship must be explicit
+
+**Self-test caller**:
+The internal regression harness that invokes local reusable workflows against in-repository fixtures; it is not a Consumer repository.
+_Avoid_: consumer
+
+**Integration smoke**:
+A parse-and-lint drift probe for Canary consumer repositories; it does not execute a consumer pipeline.
+_Avoid_: end-to-end consumer test

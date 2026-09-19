@@ -4,7 +4,7 @@
 # Runs lint, test, coverage threshold checks, and optional dependency audit
 # for Node.js/TypeScript projects.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     ci:
 #       uses: nandohdc/gh-pipelines/.github/workflows/ci-node.yml@v1

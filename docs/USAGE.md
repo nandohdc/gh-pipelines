@@ -4,13 +4,23 @@ Complete reference for every reusable workflow and composite action in this repo
 
 ---
 
+## Consumer Terminology
+
+A **Consumer repository** adopts a published gh-pipelines artifact. A
+**Workflow consumer** owns one or more **Caller workflows**; each job-level use
+of a reusable workflow is a **Workflow invocation**. A
+**Composite-action consumer** uses a composite action directly and is not
+necessarily a Workflow consumer.
+
+---
+
 ## Runner Selection
 
 Every reusable workflow exposes an optional `runner-label` input. Jobs resolve `runs-on` to the supplied label, or fall back to GitHub-hosted `ubuntu-latest` when the input is empty or omitted.
 
-### Consumer usage
+### Workflow consumer usage
 
-Pass the label explicitly in each `workflow_call` block:
+In a Caller workflow, pass the label explicitly in each Workflow invocation:
 
 ```yaml
 jobs:
@@ -29,9 +39,10 @@ gh variable set RUNNER_LABEL --body "arc-runners-myorg"
 
 ### Internal repo usage
 
-Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) resolve their own `runs-on` directly from `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`, so the gh-pipelines repo itself can run on the same pool without requiring callers to pass anything.
+Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) resolve their own `runs-on` directly from `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`, so the gh-pipelines repo itself can run on the same pool without requiring Caller workflows to pass anything.
 
-`test-callers.yml` forwards the variable to the reusable workflows it calls:
+`test-callers.yml` is a Self-test caller. It forwards the variable to the local
+reusable workflows it invokes, but is not a Consumer repository:
 
 ```yaml
 with:
@@ -55,7 +66,7 @@ Use a runner image broad enough for all jobs the workflow triggers.
 
 ## SonarQube Scanner/Public URL Contract
 
-SonarQube workflows use two different URL roles. Keep them separate in consumer repositories:
+SonarQube workflows use two different URL roles. Keep them separate in Consumer repositories:
 
 | Role | Preferred setting | Local-kind ARC value | Used by |
 | --- | --- | --- | --- |
@@ -94,8 +105,8 @@ Full CI pipeline for Go services including linting, testing, vulnerability scann
 | `golangci-lint-major` | string | no | `1` | golangci-lint major (`1` or `2`), selecting the corresponding Go module path |
 | `coverage-min` | string | no | `65.0` | Minimum coverage percentage |
 | `coverage-packages` | string | no | `""` | Space-separated packages for coverage (empty = all) |
-| `coverage-artifact-name` | string | no | `coverage` | Published coverage artifact name; make it unique for parallel callers |
-| `integration-coverage-artifact-name` | string | no | `integration-coverage` | Published integration coverage artifact name; make it unique for parallel callers |
+| `coverage-artifact-name` | string | no | `coverage` | Published coverage artifact name; make it unique for parallel Caller jobs |
+| `integration-coverage-artifact-name` | string | no | `integration-coverage` | Published integration coverage artifact name; make it unique for parallel Caller jobs |
 | `run-build` | boolean | no | `false` | Run `go build ./...` before unit tests |
 | `run-integration` | boolean | no | `false` | Run integration tests |
 | `integration-tags` | string | no | `integration` | Build tags for integration tests |
@@ -136,9 +147,9 @@ jobs:
 
 For a repository with several independent Go modules, call `ci-go.yml` once
 per module. Pass that module's toolchain and `go.sum` path, choose the
-golangci-lint major that matches its configuration, and give every caller a
+golangci-lint major that matches its configuration, and give every Caller job
 unique unit and integration coverage artifact names. A later `sonar-scan.yml`
-caller can download the unit artifacts with `coverage-artifact-pattern` before
+Workflow invocation can download the unit artifacts with `coverage-artifact-pattern` before
 its `pre-scan-command` merges or otherwise prepares the coverage report.
 
 ---
@@ -246,7 +257,7 @@ jobs:
 
 ### ci-with-sonar-go.yml / ci-with-sonar-node.yml / ci-with-sonar-python.yml — Language CI + Sonar Bundle
 
-Reusable bundle workflows that run language CI and SonarQube in parallel. Sonar credentials are fetched per-run from Doppler, so consumer repositories only store `DOPPLER_TOKEN`.
+Reusable bundle workflows that run language CI and SonarQube in parallel. Sonar credentials are fetched per-run from Doppler, so Workflow consumer repositories only store `DOPPLER_TOKEN`.
 
 **Trigger:** `workflow_call`
 
@@ -286,7 +297,7 @@ Each bundle re-declares every input from its underlying workflow:
 4. Scanner URL preflight validates syntax, DNS/connectivity, `/api/system/status` readiness (with `/api/server/version` fallback), and bounded retries before scan; `.scannerwork/report-task.txt` must exist and match the resolved scanner URL before the quality gate runs.
 5. For local-kind ARC deployments, pass `runner-label: ${{ vars.RUNNER_LABEL }}` and set `SONAR_SCANNER_HOST_URL` to `http://sonarqube.sonarqube.svc.cluster.local:9000` so scan and quality gate traffic stay private.
 6. If the local ARC runtime is offline, jobs stay queued/pending. If the runner is available but SonarQube is unreachable or unhealthy, the preflight fails before scanning and cannot yield a green SonarQube check.
-7. Sonar status-check context in consumer repositories is expected to appear as `ci / sonar-scan`.
+7. Sonar status-check context in Workflow consumer repositories is expected to appear as `ci / sonar-scan`.
 
 #### Example
 
@@ -320,7 +331,7 @@ Reusable CI workflow for Terraform projects with formatting checks, validation, 
 
 **Trigger:** `workflow_call`
 
-Cloud credentials are caller-managed and should be configured in the consumer workflow (environment variables or OIDC).
+Cloud credentials are managed by the Caller workflow and should be configured in it (environment variables or OIDC).
 
 #### Inputs
 
@@ -366,7 +377,7 @@ jobs:
 
 Builds a Docker image with Buildx, extracts standard metadata/tags, and pushes to GHCR on the default branch. Optional inputs can also generate SBOMs, sign by digest, attest the SBOM, and emit SLSA provenance. The `sign-image` and `attest-sbom` jobs self-verify (`cosign verify` / `cosign verify-attestation --type spdxjson`) against the pushed digest, so they fail closed if no signature/attestation is produced.
 
-The SBOM attestation is published in cosign's **legacy `.att` bundle format** (`--new-bundle-format=false`). cosign v3 defaults to the new Sigstore bundle format attached via the OCI 1.1 referrers API, which is not reliably retrievable on GHCR (`cosign verify-attestation` fails with `no valid bundles exist in registry`). Consumers verifying the attestation on cosign v3 must therefore pass the same flag:
+The SBOM attestation is published in cosign's **legacy `.att` bundle format** (`--new-bundle-format=false`). cosign v3 defaults to the new Sigstore bundle format attached via the OCI 1.1 referrers API, which is not reliably retrievable on GHCR (`cosign verify-attestation` fails with `no valid bundles exist in registry`). Consumer repositories verifying the attestation on cosign v3 must therefore pass the same flag:
 
 ```bash
 cosign verify-attestation \
@@ -397,13 +408,13 @@ cosign verify-attestation \
 
 #### Permissions
 
-Default caller permissions stay minimal:
+Default Caller job permissions stay minimal:
 - `contents: read`
 - `packages: write`
 
-When optional hardening inputs are enabled, caller permissions must include:
+When optional hardening inputs are enabled, Caller job permissions must include:
 
-| Input | Additional caller permissions |
+| Input | Additional Caller job permissions |
 | --- | --- |
 | `generate-sbom` | `actions: write` |
 | `sign-image` | `id-token: write` |
@@ -585,15 +596,15 @@ Runs SonarQube analysis and waits for quality gate status. The workflow resolves
 | `SONAR_PUBLIC_BASE_URL` | no | Optional public SonarQube UI/base URL secret; not used by scanner calls |
 | `SONAR_HOST_URL` | no | Legacy scanner URL fallback |
 
-#### Consumer Prerequisites
+#### Workflow Consumer Prerequisites
 
 1. Create repository secret `SONAR_TOKEN`.
 2. Provide one scanner URL source, in order of precedence: non-secret input `sonar-scanner-host-url`, secret `SONAR_SCANNER_HOST_URL`, or legacy secret `SONAR_HOST_URL`.
 3. For local-kind ARC scanning, set `SONAR_SCANNER_HOST_URL` to `http://sonarqube.sonarqube.svc.cluster.local:9000` and pass `runner-label: ${{ vars.RUNNER_LABEL }}` for the ARC runner label that can reach the Service.
 4. Optionally provide `sonar-public-base-url` / `SONAR_PUBLIC_BASE_URL` for UI/link terminology; scanner and quality-gate actions do not use it.
-5. Create `sonar-project.properties` in the consumer repository with at least `sonar.projectKey=...`.
+5. Create `sonar-project.properties` in the Workflow consumer repository with at least `sonar.projectKey=...`.
 6. Keep `sonar.projectKey` in `sonar-project.properties`; this workflow intentionally does not expose a `project-key` input.
-7. In the caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
+7. In the Caller job, set `permissions` to include `contents: read` and `pull-requests: read`.
 8. Expect queued/pending jobs while the local ARC runtime is offline; expect fail-fast preflight errors, not a green check, when a runner is available but SonarQube is unreachable or unhealthy.
 
 #### Example

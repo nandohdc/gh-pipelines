@@ -1,7 +1,8 @@
 # =============================================================================
-# Example: Docker build caller workflow (optional hardening enabled)
+# Example: Docker build Caller workflow (optional hardening enabled)
 # =============================================================================
-# Enables SBOM generation, cosign keyless signing, SPDX SBOM attestation, and
+# This Caller workflow belongs in a Workflow consumer. It enables SBOM generation,
+# cosign keyless signing, SPDX SBOM attestation, and
 # SLSA provenance for pushed images from docker-build.yml. The sign-image and
 # attest-sbom jobs self-verify, so they fail closed if nothing is produced.
 # =============================================================================

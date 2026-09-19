@@ -1,8 +1,9 @@
 # =============================================================================
-# test-callers.yml — Internal reusable-workflow regression harness
+# test-callers.yml — Internal reusable-workflow self-test caller
 # =============================================================================
-# Calls local reusable workflows against minimal in-repo fixtures so PRs validate
-# real caller behavior before release tags are moved.
+# This self-test caller invokes local reusable workflows against minimal in-repo
+# fixtures so PRs validate real Caller workflow behavior before release tags are moved.
+# It is not a Consumer repository or a Canary consumer repository.
 # =============================================================================
 
 name: test-callers
@@ -162,7 +163,7 @@ jobs:
       DOPPLER_TOKEN: ${{ github.token }}
 
   # NOTE: Local self-tests cannot catch cross-repo path resolution bugs — ./actions/* resolves fine
-  # from within this repo but fails when the workflow is invoked from an external caller.
+  # from within this repo but fails when the workflow is invoked from an external Caller workflow.
   test-ci-terraform:
     name: test ci-terraform caller
     uses: ./.github/workflows/ci-terraform.yml

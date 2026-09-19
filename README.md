@@ -4,7 +4,17 @@ Centralized, reusable GitHub Actions workflows and composite actions for the `na
 
 ## Why
 
-Instead of duplicating CI/CD logic across every repository, this repo provides **reusable workflows** (`workflow_call`) and **composite actions** that any repository can reference. Update pipeline logic once, every consumer inherits the change.
+Instead of duplicating CI/CD logic across every repository, this repo provides **reusable workflows** (`workflow_call`) and **composite actions** that any repository can reference. Update pipeline logic once, every Consumer repository inherits the change.
+
+## Consumer Terminology
+
+A **Consumer repository** is an external repository that adopts a published
+gh-pipelines artifact through a versioned reference. A **Workflow consumer**
+uses at least one reusable workflow; its **Caller workflow** is the
+consumer-owned workflow file, and each job-level use of a reusable workflow is
+a Workflow invocation (also called a Caller job). A Consumer repository that uses a composite action
+directly is a **Composite-action consumer**, not necessarily a Workflow
+consumer.
 
 ## Available Workflows
 
@@ -23,7 +33,7 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
 | **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with preflighted scanner URL, quality gate enforcement, and optional pre-scan command hook |
 
-*`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `attest-sbom`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled. The `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`), so they fail closed instead of silently passing when no signature/attestation is produced. The SBOM attestation uses cosign's legacy `.att` bundle format (`--new-bundle-format=false`) for GHCR compatibility — consumers verifying it on cosign v3 must pass the same flag (see `docs/USAGE.md`).
+*`docker-build.yml` supports optional hardening inputs (`generate-sbom`, `sign-image`, `attest-sbom`, `generate-provenance`) that run conditional jobs with expanded permissions only when enabled. The `sign-image` and `attest-sbom` jobs self-verify in the workflow (`cosign verify` / `cosign verify-attestation`), so they fail closed instead of silently passing when no signature/attestation is produced. The SBOM attestation uses cosign's legacy `.att` bundle format (`--new-bundle-format=false`) for GHCR compatibility — Consumer repositories verifying it on cosign v3 must pass the same flag (see `docs/USAGE.md`).
 
 ## Available Composite Actions
 
@@ -43,7 +53,8 @@ Instead of duplicating CI/CD logic across every repository, this repo provides *
 ### Using a reusable workflow
 
 ```yaml
-# .github/workflows/ci.yml in your Go service repo
+# A Caller workflow in your Go Workflow consumer
+# .github/workflows/ci.yml
 name: ci
 
 on:
@@ -73,14 +84,14 @@ steps:
       go-version: "1.26.2"
 ```
 
-### Multi-module Go callers
+### Multi-module Go Workflow consumers
 
-Call `ci-go.yml` once for each independent module, passing its declared Go
-toolchain, `go.sum` cache path, compatible golangci-lint major, and a unique
-unit and integration coverage artifact name. A downstream `sonar-scan.yml` job
-can download matching unit artifacts before its pre-scan command prepares the
-coverage report. This keeps module toolchains isolated while retaining one
-reusable CI contract.
+In a Caller workflow, invoke `ci-go.yml` once for each independent module,
+passing its declared Go toolchain, `go.sum` cache path, compatible golangci-lint
+major, and a unique unit and integration coverage artifact name. A later
+`sonar-scan.yml` Workflow invocation can download matching unit artifacts before
+its pre-scan command prepares the coverage report. This keeps module toolchains
+isolated while retaining one reusable CI contract.
 
 ## Runner Selection
 
@@ -111,7 +122,7 @@ SonarQube workflows separate the private scanner endpoint from the public UI/bas
 | --- | --- |
 | `SONAR_SCANNER_HOST_URL` / `sonar-scanner-host-url` | Scanner server URL used by SonarSource scan and quality-gate actions. For local-kind ARC runners, prefer `http://sonarqube.sonarqube.svc.cluster.local:9000`. |
 | `SONAR_PUBLIC_BASE_URL` / `sonar-public-base-url` | Stable public HTTPS SonarQube UI/base URL for generated links and browser callbacks. It is not used for scanner connectivity. |
-| `SONAR_HOST_URL` | Legacy scanner URL fallback kept for backward compatibility only. New callers should use `SONAR_SCANNER_HOST_URL`. |
+| `SONAR_HOST_URL` | Legacy scanner URL fallback kept for backward compatibility only. New Caller workflows should use `SONAR_SCANNER_HOST_URL`. |
 | `RUNNER_LABEL` / `runner-label` | Selects the runner pool. Use the appropriate ARC runner label when the scanner URL is the local-kind Service URL. |
 
 If the local ARC runtime is offline, GitHub jobs remain queued or pending until a matching runner becomes available. If a runner starts but SonarQube is unavailable, starting, or unhealthy, the preflight fails before scanning and the SonarQube check cannot turn green without contacting SonarQube.
@@ -122,10 +133,10 @@ Do not add custom tunnel/auth headers to SonarSource actions; this contract assu
 
 This repository uses **tag-based versioning**:
 
-- `v1` — floating major tag (recommended for consumers)
+- `v1` — floating major tag (recommended for Consumer repositories)
 - `v1.0.0` — exact semantic version
 
-Pin to the major version (`@v1`) to automatically receive backward-compatible updates. Pin to an exact version (`@v1.0.0`) for maximum stability.
+Use `@v1` for normal backward-compatible delivery. An exact release reference fixes the declared workflow reference, not every transitive dependency. Branch references and `@main` are validation references, not production onboarding references. The `@main` reference is reserved for the integration-smoke probe.
 
 ## Repository Layout
 
@@ -133,7 +144,7 @@ Pin to the major version (`@v1`) to automatically receive backward-compatible up
 .github/workflows/    Reusable workflows (workflow_call) + internal workflows (lint, test-callers, release, security-self-scan, dependabot-auto-merge, integration-smoke)
 actions/              Composite actions for shared steps
 docs/                 Usage, contribution, and integration-canary guides
-examples/             Copy-paste caller workflow examples
+examples/             Copy-paste Caller workflow examples
 scripts/              Helper scripts for consumer onboarding (for example, enforce-sonar-branch-protection.sh)
 tests/fixtures/       Minimal fixtures exercised by the internal regression harness (go, node, python, terraform)
 ```

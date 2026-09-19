@@ -4,7 +4,7 @@
 # Runs lint, unit tests, vulnerability checks, and optional integration tests
 # for Go projects. Designed to be called from any Go service repository.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     ci:
 #       uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
@@ -53,12 +53,12 @@ on:
         required: false
         default: ""
       coverage-artifact-name:
-        description: "Artifact name used to publish coverage.out. Must be unique when multiple callers run in one workflow."
+        description: "Artifact name used to publish coverage.out. Must be unique when multiple Caller jobs run in one workflow."
         type: string
         required: false
         default: "coverage"
       integration-coverage-artifact-name:
-        description: "Artifact name used to publish integration-coverage.out. Must be unique when multiple callers run in one workflow."
+        description: "Artifact name used to publish integration-coverage.out. Must be unique when multiple Caller jobs run in one workflow."
         type: string
         required: false
         default: "integration-coverage"
