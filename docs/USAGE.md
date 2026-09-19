@@ -89,9 +89,14 @@ Full CI pipeline for Go services including linting, testing, vulnerability scann
 | Input | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `go-version` | string | no | `1.26.2` | Go version to install |
+| `cache-dependency-path` | string | no | `""` | Module `go.sum` used for caching; empty resolves to `<working-directory>/go.sum` and disables caching when absent |
 | `golangci-lint-version` | string | no | `v1.64.8` | golangci-lint version |
+| `golangci-lint-major` | string | no | `1` | golangci-lint major (`1` or `2`), selecting the corresponding Go module path |
 | `coverage-min` | string | no | `65.0` | Minimum coverage percentage |
 | `coverage-packages` | string | no | `""` | Space-separated packages for coverage (empty = all) |
+| `coverage-artifact-name` | string | no | `coverage` | Published coverage artifact name; make it unique for parallel callers |
+| `integration-coverage-artifact-name` | string | no | `integration-coverage` | Published integration coverage artifact name; make it unique for parallel callers |
+| `run-build` | boolean | no | `false` | Run `go build ./...` before unit tests |
 | `run-integration` | boolean | no | `false` | Run integration tests |
 | `integration-tags` | string | no | `integration` | Build tags for integration tests |
 | `integration-packages` | string | no | `./internal/...` | Package pattern for integration tests |
@@ -128,6 +133,13 @@ jobs:
       run-k8s-validate: true
       run-prometheus-validate: true
 ```
+
+For a repository with several independent Go modules, call `ci-go.yml` once
+per module. Pass that module's toolchain and `go.sum` path, choose the
+golangci-lint major that matches its configuration, and give every caller a
+unique unit and integration coverage artifact names. A later `sonar-scan.yml`
+caller can download the unit artifacts with `coverage-artifact-pattern` before
+its `pre-scan-command` merges or otherwise prepares the coverage report.
 
 ---
 
@@ -558,6 +570,8 @@ Runs SonarQube analysis and waits for quality gate status. The workflow resolves
 | `extra-scan-args` | string | no | `""` | Extra scanner args passed to SonarQube scan action |
 | `pre-scan-command` | string | no | `""` | Shell command executed after checkout and tool setup but before the scan; use it to generate coverage reports (e.g. `pytest --cov --cov-report=xml`) |
 | `pre-scan-python-version` | string | no | `""` | Optional Python version installed before `pre-scan-command`; empty skips Python setup |
+| `coverage-artifact-pattern` | string | no | `""` | Optional artifact-name pattern downloaded before `pre-scan-command` (for example, `coverage-*`) |
+| `coverage-artifact-path` | string | no | `coverage` | Workspace path where matching coverage artifacts are downloaded |
 | `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate |
 | `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used for scanner calls |
 | `runner-label` | string | no | `""` | Self-hosted runner label. Empty uses `ubuntu-latest` |
@@ -600,6 +614,8 @@ jobs:
       extra-scan-args: ""
       pre-scan-command: ""
       pre-scan-python-version: ""
+      coverage-artifact-pattern: ""
+      coverage-artifact-path: "coverage"
       sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
       sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
       runner-label: ${{ vars.RUNNER_LABEL }}

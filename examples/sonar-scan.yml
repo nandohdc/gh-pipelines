@@ -32,6 +32,8 @@ jobs:
       extra-scan-args: ""
       pre-scan-command: ""
       pre-scan-python-version: ""
+      coverage-artifact-pattern: ""
+      coverage-artifact-path: "coverage"
       sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
       sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
       runner-label: ${{ vars.RUNNER_LABEL }}

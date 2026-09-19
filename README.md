@@ -73,6 +73,15 @@ steps:
       go-version: "1.26.2"
 ```
 
+### Multi-module Go callers
+
+Call `ci-go.yml` once for each independent module, passing its declared Go
+toolchain, `go.sum` cache path, compatible golangci-lint major, and a unique
+unit and integration coverage artifact name. A downstream `sonar-scan.yml` job
+can download matching unit artifacts before its pre-scan command prepares the
+coverage report. This keeps module toolchains isolated while retaining one
+reusable CI contract.
+
 ## Runner Selection
 
 Reusable workflows accept an optional `runner-label` input. Jobs default to GitHub-hosted `ubuntu-latest` when the input is empty. Pass your runner label at the call site to target a self-hosted runner:
@@ -139,4 +148,3 @@ tests/fixtures/       Minimal fixtures exercised by the internal regression harn
 ## License
 
 [MIT](LICENSE)
-

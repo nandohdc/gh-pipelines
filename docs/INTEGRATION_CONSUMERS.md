@@ -14,6 +14,17 @@ Selection criteria used:
 - Repository behavior is representative for its ecosystem.
 - Repository owner is the same maintainer of `gh-pipelines`, making it a safe early-warning canary.
 
+## Multi-module Go Consumer Contract
+
+Consumers with independent Go modules call `ci-go.yml` once per module. Each
+caller must pass its module toolchain, `go.sum` cache path, compatible
+golangci-lint major, and unique unit and integration coverage artifact names.
+When SonarQube needs the aggregate unit coverage report, its `sonar-scan.yml`
+caller passes the unique artifact prefix through `coverage-artifact-pattern` and
+merges the downloaded profiles in `pre-scan-command`. This preserves isolation
+until the one consumer-owned aggregation step and lets integration smoke detect
+the Sonar workflow reference.
+
 ## Smoke Implementation (Current)
 
 `integration-smoke.yml` runs a parse-based integration gate against each canary:

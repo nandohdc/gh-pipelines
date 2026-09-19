@@ -64,6 +64,16 @@ on:
         type: string
         required: false
         default: ""
+      coverage-artifact-pattern:
+        description: "Optional artifact-name pattern downloaded before pre-scan-command, for example coverage-*."
+        type: string
+        required: false
+        default: ""
+      coverage-artifact-path:
+        description: "Workspace path where matching coverage artifacts are downloaded."
+        type: string
+        required: false
+        default: "coverage"
       sonar-scanner-host-url:
         description: "Non-secret scanner URL. Empty uses SONAR_SCANNER_HOST_URL, then SONAR_HOST_URL."
         type: string
@@ -382,6 +392,14 @@ jobs:
         uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.pre-scan-python-version }}
+
+      - name: Download coverage artifacts
+        if: inputs.coverage-artifact-pattern != ''
+        uses: actions/download-artifact@v7
+        with:
+          pattern: ${{ inputs.coverage-artifact-pattern }}
+          path: ${{ inputs.coverage-artifact-path }}
+          merge-multiple: false
 
       - name: Pre-scan command
         if: inputs.pre-scan-command != ''

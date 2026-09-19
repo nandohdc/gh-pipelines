@@ -37,6 +37,8 @@ def test_workflow_url_contract() -> None:
         "sonar-public-base-url:",
         "pre-scan-command:",
         "pre-scan-python-version:",
+        "coverage-artifact-pattern:",
+        "coverage-artifact-path:",
         "SONAR_SCANNER_HOST_URL:",
         "SONAR_PUBLIC_BASE_URL:",
         "SONAR_HOST_URL:",
@@ -70,6 +72,7 @@ def test_preflight_runs_before_scan_and_distinguishes_failures() -> None:
         "      - name: Install Sonar scanner signature dependencies",
         "      - name: Setup Node for Sonar JS analyzer",
         "      - name: Setup Python for pre-scan command",
+        "      - name: Download coverage artifacts",
         "      - name: Pre-scan command",
         "      - name: SonarQube scan",
         "      - name: Validate SonarQube scanner report",
@@ -193,6 +196,16 @@ def test_external_actions_are_pinned() -> None:
         "Python setup must use the caller-selected version",
     )
 
+    artifacts = step_block(text, "Download coverage artifacts")
+    for expected in (
+        "if: inputs.coverage-artifact-pattern != ''",
+        "uses: actions/download-artifact@v7",
+        "pattern: ${{ inputs.coverage-artifact-pattern }}",
+        "path: ${{ inputs.coverage-artifact-path }}",
+        "merge-multiple: false",
+    ):
+        assert_contains(artifacts, expected, f"coverage artifact handoff missing: {expected}")
+
 
 def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
     workflow = read(REPOSITORY_WORKFLOW)
@@ -233,6 +246,8 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
         "sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}",
         'pre-scan-command: ""',
         'pre-scan-python-version: ""',
+        'coverage-artifact-pattern: ""',
+        'coverage-artifact-path: "coverage"',
         "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}",
         "SONAR_PUBLIC_BASE_URL: ${{ secrets.SONAR_PUBLIC_BASE_URL }}",
         "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}",
