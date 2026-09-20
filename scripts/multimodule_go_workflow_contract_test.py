@@ -9,9 +9,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from scripts.contract_lib import assert_contains, assert_order, read, step_block
+from scripts.contract_lib import assert_contains, assert_not_contains, assert_order, read, step_block
 
 CI_GO = ROOT / ".github" / "workflows" / "ci-go.yml"
+ZIZMOR_CONFIG = ROOT / ".zizmor.yml"
 SETUP_GO = ROOT / "actions" / "setup-go" / "action.yml"
 SONAR_SCAN = ROOT / ".github" / "workflows" / "sonar-scan.yml"
 TEST_CALLERS = ROOT / ".github" / "workflows" / "test-callers.yml"
@@ -50,6 +51,52 @@ def test_ci_go_supports_independent_module_contracts() -> None:
     assert_contains(lint, "case \"${GOLANGCI_LINT_MAJOR}\" in", "lint must select a supported major explicitly")
     assert_contains(lint, "1)", "lint must preserve golangci-lint v1 compatibility")
     assert_contains(lint, "2)", "lint must support golangci-lint v2 configurations")
+
+
+def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
+    workflow = read(CI_GO)
+    zizmor_config = read(ZIZMOR_CONFIG)
+    integration = step_block(workflow, "Integration tests")
+    manifests = step_block(workflow, "Validate Kubernetes manifests")
+    prometheus = step_block(workflow, "Validate Prometheus rules")
+
+    for block, input_name, environment_name in (
+        (integration, "integration-tags", "INTEGRATION_TAGS"),
+        (integration, "integration-packages", "INTEGRATION_PACKAGES"),
+        (manifests, "k8s-manifests-dir", "K8S_MANIFESTS_DIR"),
+        (prometheus, "prometheus-rules-dir", "PROMETHEUS_RULES_DIR"),
+    ):
+        assert_contains(
+            block,
+            f"{environment_name}: ${{{{ inputs.{input_name} }}}}",
+            f"{input_name} must enter the shell through {environment_name}",
+        )
+
+    assert_contains(integration, '"-tags=${INTEGRATION_TAGS}"', "integration tags must be one shell argument")
+    assert_contains(
+        integration,
+        'read -r -a integration_packages <<< "${INTEGRATION_PACKAGES}"',
+        "integration packages must not be expanded by the shell parser",
+    )
+    assert_contains(integration, '"${integration_packages[@]}"', "integration packages must preserve argument boundaries")
+    assert_contains(manifests, 'manifest_files=("${K8S_MANIFESTS_DIR}"/*.yaml)', "manifest paths must be quoted")
+    assert_contains(prometheus, 'rule_files=("${PROMETHEUS_RULES_DIR}"/*.yaml)', "rule paths must be quoted")
+
+    for step_name, block in (
+        ("Integration tests", integration),
+        ("Validate Kubernetes manifests", manifests),
+        ("Validate Prometheus rules", prometheus),
+    ):
+        run_marker = "        run: |\n"
+        assert_contains(block, run_marker, f"{step_name} must have a shell run block")
+        run = block.split(run_marker, maxsplit=1)[1]
+        assert_not_contains(run, "${{ inputs.", f"{step_name} must not interpolate workflow input into shell")
+
+    assert_not_contains(
+        zizmor_config,
+        "- ci-go.yml:",
+        "ci-go must not suppress template-injection findings instead of fixing them",
+    )
 
 
 def test_sonar_scan_can_consume_caller_coverage_artifacts() -> None:
@@ -92,6 +139,7 @@ def test_internal_fixture_exercises_optional_build_and_artifact_name() -> None:
 
 def main() -> None:
     test_ci_go_supports_independent_module_contracts()
+    test_ci_go_routes_shell_inputs_through_environment_variables()
     test_sonar_scan_can_consume_caller_coverage_artifacts()
     test_internal_fixture_exercises_optional_build_and_artifact_name()
     print("multimodule_go_workflow_contract_test: ok")

@@ -295,10 +295,19 @@ jobs:
           cache-dependency-path: ${{ inputs.cache-dependency-path }}
 
       - name: Integration tests
+        shell: bash
+        env:
+          INTEGRATION_TAGS: ${{ inputs.integration-tags }}
+          INTEGRATION_PACKAGES: ${{ inputs.integration-packages }}
         run: |
+          set -euo pipefail
+          integration_packages=()
+          if [[ -n "${INTEGRATION_PACKAGES}" ]]; then
+            read -r -a integration_packages <<< "${INTEGRATION_PACKAGES}"
+          fi
           go test -coverprofile=integration-coverage.out \
-            -tags=${{ inputs.integration-tags }} \
-            ${{ inputs.integration-packages }}
+            "-tags=${INTEGRATION_TAGS}" \
+            "${integration_packages[@]}"
 
       - name: Upload integration coverage
         uses: actions/upload-artifact@v7
@@ -369,9 +378,17 @@ jobs:
       - name: Validate Kubernetes manifests
         if: inputs.run-k8s-validate
         shell: bash
+        env:
+          K8S_MANIFESTS_DIR: ${{ inputs.k8s-manifests-dir }}
         run: |
           set -euo pipefail
-          for f in ${{ inputs.k8s-manifests-dir }}/*.yaml; do
+          shopt -s nullglob
+          manifest_files=("${K8S_MANIFESTS_DIR}"/*.yaml)
+          if [[ ${#manifest_files[@]} -eq 0 ]]; then
+            echo "::error::No Kubernetes manifests found in ${K8S_MANIFESTS_DIR}."
+            exit 1
+          fi
+          for f in "${manifest_files[@]}"; do
             [[ "${f}" == *.example ]] && continue
             echo "Validating: ${f}"
             kubectl apply --dry-run=client -f "${f}"
@@ -380,8 +397,16 @@ jobs:
       - name: Validate Prometheus rules
         shell: bash
         if: inputs.run-prometheus-validate
+        env:
+          PROMETHEUS_RULES_DIR: ${{ inputs.prometheus-rules-dir }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          rule_files=("${PROMETHEUS_RULES_DIR}"/*.yaml)
+          if [[ ${#rule_files[@]} -eq 0 ]]; then
+            echo "::error::No Prometheus rule files found in ${PROMETHEUS_RULES_DIR}."
+            exit 1
+          fi
           docker run --rm --entrypoint promtool \
             -v "$PWD:/work" -w /work prom/prometheus:v2.53.0 \
-            check rules ${{ inputs.prometheus-rules-dir }}/*.yaml
+            check rules "${rule_files[@]}"

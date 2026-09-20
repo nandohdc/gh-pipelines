@@ -15,12 +15,6 @@ rules:
 
   template-injection:
     ignore:
-      # workflow_call inputs in ci-go are maintainer-controlled by trusted caller repos.
-      - ci-go.yml:146
-      - ci-go.yml:250
-      - ci-go.yml:251
-      - ci-go.yml:323
-      - ci-go.yml:336
       # workflow_call inputs in ci-node are validated and constrained by the workflow interface.
       - ci-node.yml:88
       - ci-node.yml:91
