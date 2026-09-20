@@ -1,8 +1,8 @@
 # =============================================================================
-# Example: Go service CI caller workflow
+# Example: Go service CI Caller workflow
 # =============================================================================
-# Copy this file to your Go service repository at .github/workflows/ci.yml
-# and adjust the inputs to match your project.
+# Copy this Caller workflow to your Go Workflow consumer at
+# .github/workflows/ci.yml and adjust the inputs to match your project.
 # =============================================================================
 
 name: ci
@@ -16,7 +16,9 @@ jobs:
     uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
     with:
       go-version: "1.26.2"
+      cache-dependency-path: "go.sum"
       golangci-lint-version: "v1.64.8"
+      golangci-lint-major: "1"
       coverage-min: "65.0"
       coverage-packages: "./internal/canonical ./internal/config ./internal/db ./internal/health ./internal/httpx ./internal/observability ./internal/outbox ./internal/requestid"
       run-integration: true

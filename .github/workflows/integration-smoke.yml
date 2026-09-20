@@ -1,3 +1,5 @@
+# Integration smoke is a parse-and-lint drift probe for Canary consumer
+# repositories. It does not execute a consumer pipeline.
 name: integration-smoke
 
 on:
@@ -6,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       consumer:
-        description: "Consumer canary to run"
+        description: "Canary consumer repository to run"
         required: false
         default: all
         type: choice
@@ -24,12 +26,12 @@ permissions:
 
 jobs:
   select-consumers:
-    name: select consumers
+    name: select Canary consumer repositories
     runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || vars.RUNNER_LABEL || 'ubuntu-latest' }}
     outputs:
       matrix: ${{ steps.matrix.outputs.matrix }}
     steps:
-      - name: Build consumer matrix
+      - name: Build Canary consumer repository matrix
         id: matrix
         shell: bash
         env:
@@ -45,7 +47,7 @@ jobs:
               matrix='[{"id":"financial-events-ingestion-api","repository":"nandohdc/financial-events-ingestion-api","language":"go"}]'
               ;;
             *)
-              echo "::error::Unsupported consumer input: ${REQUESTED_CONSUMER}"
+              echo "::error::Unsupported Canary consumer repository input: ${REQUESTED_CONSUMER}"
               exit 1
               ;;
           esac
@@ -79,11 +81,11 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${INTEGRATION_PAT}" ]; then
-            echo "::error::Missing required INTEGRATION_PAT secret for private consumer checkout."
+            echo "::error::Missing required INTEGRATION_PAT secret for private Canary consumer repository checkout."
             exit 1
           fi
 
-      - name: Checkout consumer repository
+      - name: Checkout Canary consumer repository
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.INTEGRATION_PAT }}
@@ -99,13 +101,13 @@ jobs:
           cd consumer
 
           if [ ! -d ".github/workflows" ]; then
-            echo "::error::No .github/workflows directory found in consumer repository."
+            echo "::error::No .github/workflows directory found in Canary consumer repository."
             exit 1
           fi
 
           mapfile -t workflow_files < <(find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | sort)
           if ((${#workflow_files[@]} == 0)); then
-            echo "::error::No workflow files found in consumer repository."
+            echo "::error::No Caller workflow files found in Canary consumer repository."
             exit 1
           fi
 
@@ -149,7 +151,7 @@ jobs:
           fi
 
           if [ -n "${has_sonar_reference}" ]; then
-            echo "Detected Sonar integration reference in consumer workflows."
+            echo "Detected Sonar integration reference in Caller workflows."
             exit 0
           fi
 
@@ -157,7 +159,7 @@ jobs:
           touch "${RUNNER_TEMP}/sonar-missing"
           exit 1
 
-      - name: Lint rewritten consumer workflows
+      - name: Lint rewritten Caller workflows
         shell: bash
         run: |
           set -euo pipefail
@@ -180,7 +182,7 @@ jobs:
           issue_label="drift"
           issue_title="Integration drift: ${CONSUMER_ID}"
           issue_color="D93F0B"
-          issue_description="Detected integration drift against consumer canaries"
+          issue_description="Detected integration drift against Canary consumer repositories"
 
           issue_body="$(printf 'Integration smoke failed while validating %s.\n\nRun: %s\n' "${CONSUMER_ID}" "${RUN_URL}")"
 
@@ -188,7 +190,7 @@ jobs:
             issue_label="sonar-missing"
             issue_title="Sonar missing: ${CONSUMER_ID}"
             issue_color="B60205"
-            issue_description="Detected missing Sonar coverage in integration canary consumers"
+            issue_description="Detected missing Sonar coverage in Canary consumer repositories"
 
             issue_body="$(printf 'Integration smoke detected missing Sonar coverage for %s.\n\nExpected one of:\n- uses: nandohdc/gh-pipelines/.github/workflows/sonar-scan.yml@...\n- uses: nandohdc/gh-pipelines/.github/workflows/ci-with-sonar-<lang>.yml@...\n- .github/SONAR_EXEMPT marker at repository root\n\nRun: %s\n' "${CONSUMER_ID}" "${RUN_URL}")"
           fi

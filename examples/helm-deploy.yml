@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Helm deploy caller workflow
+# Example: Helm deploy Caller workflow
 # =============================================================================
-# Copy this file to your platform/infra repository at
+# Copy this Caller workflow to your platform/infra Workflow consumer at
 # .github/workflows/deploy.yml and adjust the inputs.
 #
 # This example shows deploying a single Helm release. For multi-release

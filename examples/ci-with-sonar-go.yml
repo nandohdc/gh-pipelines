@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Go service CI + Sonar bundle caller workflow
+# Example: Go service CI + Sonar bundle Caller workflow
 # =============================================================================
-# Copy this file to your Go service repository at .github/workflows/ci.yml.
+# Copy this Caller workflow to your Go Workflow consumer at .github/workflows/ci.yml.
 # Provide non-secret variables when available:
 # - RUNNER_LABEL selects the ARC runner pool (for local-kind use arc-runners-<service>).
 # - SONAR_SCANNER_HOST_URL is the scanner server URL; for local-kind ARC use

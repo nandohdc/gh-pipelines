@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Docker release caller workflow
+# Example: Docker release Caller workflow
 # =============================================================================
-# Copy this file to your service repository at .github/workflows/release.yml
+# Copy this Caller workflow to your service Workflow consumer at .github/workflows/release.yml
 # and adjust the inputs to match your project.
 # =============================================================================
 

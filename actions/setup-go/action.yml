@@ -10,6 +10,10 @@ inputs:
     description: "Enable Go module caching."
     required: false
     default: "true"
+  cache-dependency-path:
+    description: "Path to the go.sum file used for the Go module cache key. Empty resolves to <working-directory>/go.sum."
+    required: false
+    default: ""
   working-directory:
     description: "Directory containing go.mod."
     required: false
@@ -18,11 +22,39 @@ inputs:
 runs:
   using: "composite"
   steps:
+    - name: Resolve Go module cache
+      id: cache
+      shell: bash
+      env:
+        CACHE_ENABLED: ${{ inputs.cache }}
+        CACHE_DEPENDENCY_PATH: ${{ inputs.cache-dependency-path }}
+        WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        set -euo pipefail
+
+        dependency_path="${CACHE_DEPENDENCY_PATH}"
+        if [ -z "${dependency_path}" ]; then
+          dependency_path="${WORKING_DIRECTORY}/go.sum"
+        fi
+
+        if [ "${CACHE_ENABLED}" = "true" ] && [ -f "${dependency_path}" ]; then
+          echo "enabled=true" >> "${GITHUB_OUTPUT}"
+          echo "dependency-path=${dependency_path}" >> "${GITHUB_OUTPUT}"
+          exit 0
+        fi
+
+        echo "enabled=false" >> "${GITHUB_OUTPUT}"
+        echo "dependency-path=" >> "${GITHUB_OUTPUT}"
+        if [ "${CACHE_ENABLED}" = "true" ]; then
+          echo "::notice::Go module cache disabled because ${dependency_path} does not exist."
+        fi
+
     - name: Set up Go ${{ inputs.go-version }}
       uses: actions/setup-go@v7
       with:
         go-version: ${{ inputs.go-version }}
-        cache: ${{ inputs.cache }}
+        cache: ${{ steps.cache.outputs.enabled }}
+        cache-dependency-path: ${{ steps.cache.outputs.dependency-path }}
 
     - name: Download modules
       shell: bash

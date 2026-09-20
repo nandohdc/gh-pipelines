@@ -106,3 +106,17 @@ These are enforced across every workflow/action — match them when adding or ed
 - `security-self-scan.yml` runs zizmor at `min-severity: high` using `.zizmor.yml` and uploads SARIF (best-effort; warns if code scanning isn't enabled). If you add workflow or composite-action files, they are auto-covered by the `.github/workflows/**` and `actions/**/action.yml` globs. Changes to `.zizmor.yml` must keep the `high` gate green across all current files.
 - `test-callers.yml` is **not** a reusable workflow — don't consume it from another repo. New self-tests belong there, one job per reusable workflow under test, pointed at a fixture under `tests/fixtures/`.
 - `scripts/enforce-sonar-branch-protection.sh` is a consumer-side helper — it mutates another repo's branch protection to append a Sonar required check without replacing existing contexts. It is referenced from `docs/INTEGRATION_CONSUMERS.md` and is the recommended way to onboard a new consumer into the Sonar bundle without dropping their existing required checks.
+
+## Agent skills
+
+### Issue tracker
+
+Issues and specs are tracked in this repository’s GitHub Issues. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Uses the default five canonical triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Uses a single-context domain-doc layout. See `docs/agents/domain.md`.

@@ -34,6 +34,8 @@ jobs:
           python scripts/sonar_scan_workflow_contract_test.py
           python scripts/ci_with_sonar_workflow_contract_test.py
           python scripts/sonar_documentation_contract_test.py
+          python scripts/consumer_terminology_contract_test.py
+          python scripts/multimodule_go_workflow_contract_test.py
 
       - name: Contract library unit tests
         shell: bash

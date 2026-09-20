@@ -1,8 +1,9 @@
 # =============================================================================
-# test-callers.yml — Internal reusable-workflow regression harness
+# test-callers.yml — Internal reusable-workflow self-test caller
 # =============================================================================
-# Calls local reusable workflows against minimal in-repo fixtures so PRs validate
-# real caller behavior before release tags are moved.
+# This self-test caller invokes local reusable workflows against minimal in-repo
+# fixtures so PRs validate real Caller workflow behavior before release tags are moved.
+# It is not a Consumer repository or a Canary consumer repository.
 # =============================================================================
 
 name: test-callers
@@ -25,7 +26,77 @@ jobs:
     with:
       working-directory: tests/fixtures/go
       coverage-min: "0"
+      coverage-artifact-name: fixture-go-coverage
+      run-build: true
       runner-label: ${{ vars.RUNNER_LABEL }}
+
+  test-ci-go-multimodule-api:
+    name: test ci-go caller (multimodule api)
+    uses: ./.github/workflows/ci-go.yml
+    with:
+      working-directory: tests/fixtures/go-multimodule/api
+      coverage-min: "0"
+      coverage-artifact-name: fixture-multi-coverage-api
+      integration-coverage-artifact-name: fixture-multi-integration-api
+      run-build: true
+      run-integration: true
+      integration-packages: "./internal/..."
+      runner-label: ${{ vars.RUNNER_LABEL }}
+
+  test-ci-go-multimodule-cli:
+    name: test ci-go caller (multimodule cli)
+    uses: ./.github/workflows/ci-go.yml
+    with:
+      working-directory: tests/fixtures/go-multimodule/cli
+      coverage-min: "0"
+      coverage-artifact-name: fixture-multi-coverage-cli
+      integration-coverage-artifact-name: fixture-multi-integration-cli
+      run-build: true
+      run-integration: true
+      integration-packages: "./internal/..."
+      runner-label: ${{ vars.RUNNER_LABEL }}
+
+  test-ci-go-multimodule-handoff:
+    name: test ci-go caller (multimodule handoff)
+    needs: [test-ci-go-multimodule-api, test-ci-go-multimodule-cli]
+    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download unit coverage artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: fixture-multi-coverage-*
+          path: coverage
+          merge-multiple: false
+
+      - name: Download integration coverage artifacts
+        uses: actions/download-artifact@v7
+        with:
+          pattern: fixture-multi-integration-*
+          path: integration-coverage
+          merge-multiple: false
+
+      - name: Verify artifact isolation and Go coverage merge
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          first=true
+          for file in coverage/fixture-multi-coverage-api/coverage.out coverage/fixture-multi-coverage-cli/coverage.out; do
+            if [ "${first}" = true ]; then
+              cat "${file}" > coverage-merged.out
+              first=false
+            else
+              tail -n +2 "${file}" >> coverage-merged.out
+            fi
+          done
+
+          grep -qx 'mode: set' coverage-merged.out
+          test "$(grep -c '^mode:' coverage-merged.out)" -eq 1
+          test -f integration-coverage/fixture-multi-integration-api/integration-coverage.out
+          test -f integration-coverage/fixture-multi-integration-cli/integration-coverage.out
 
   test-ci-node:
     name: test ci-node caller
@@ -92,7 +163,7 @@ jobs:
       DOPPLER_TOKEN: ${{ github.token }}
 
   # NOTE: Local self-tests cannot catch cross-repo path resolution bugs — ./actions/* resolves fine
-  # from within this repo but fails when the workflow is invoked from an external caller.
+  # from within this repo but fails when the workflow is invoked from an external Caller workflow.
   test-ci-terraform:
     name: test ci-terraform caller
     uses: ./.github/workflows/ci-terraform.yml

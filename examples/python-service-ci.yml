@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Python service CI caller workflow
+# Example: Python service CI Caller workflow
 # =============================================================================
-# Copy this file to your Python repository at .github/workflows/ci.yml
+# Copy this Caller workflow to your Python Workflow consumer at .github/workflows/ci.yml
 # and adjust the inputs to match your project.
 # =============================================================================
 

@@ -4,10 +4,10 @@
 # Runs formatting, validation, planning, and optional IaC audit checks for
 # Terraform projects.
 #
-# Cloud credentials are intentionally caller-managed (environment variables or
+# Cloud credentials are intentionally managed by the Caller workflow (environment variables or
 # OIDC) and are not configured by this reusable workflow.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     ci:
 #       uses: nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1

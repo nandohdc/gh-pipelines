@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: Terraform service CI caller workflow
+# Example: Terraform service CI Caller workflow
 # =============================================================================
-# Copy this file to your Terraform repository at .github/workflows/ci.yml
+# Copy this Caller workflow to your Terraform Workflow consumer at .github/workflows/ci.yml
 # and adjust the inputs to match your project.
 # =============================================================================
 

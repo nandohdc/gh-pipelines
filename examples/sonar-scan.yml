@@ -1,7 +1,7 @@
 # =============================================================================
-# Example: SonarQube scan caller workflow
+# Example: SonarQube scan Caller workflow
 # =============================================================================
-# Copy this file to your repository at .github/workflows/sonar.yml.
+# Copy this Caller workflow to your Workflow consumer at .github/workflows/sonar.yml.
 # Requires repository secret SONAR_TOKEN and one scanner URL source:
 # - preferred: repository variable SONAR_SCANNER_HOST_URL, or
 # - fallback: repository secret SONAR_SCANNER_HOST_URL, or
@@ -32,6 +32,8 @@ jobs:
       extra-scan-args: ""
       pre-scan-command: ""
       pre-scan-python-version: ""
+      coverage-artifact-pattern: ""
+      coverage-artifact-path: "coverage"
       sonar-scanner-host-url: ${{ vars.SONAR_SCANNER_HOST_URL }}
       sonar-public-base-url: ${{ vars.SONAR_PUBLIC_BASE_URL }}
       runner-label: ${{ vars.RUNNER_LABEL }}

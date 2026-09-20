@@ -8,7 +8,7 @@ How to add, modify, and release workflows in this repository.
 .github/workflows/    Reusable workflows (workflow_call triggers)
 actions/              Composite actions for shared steps
 docs/                 Usage and contribution guides
-examples/             Copy-paste caller workflow examples
+examples/             Copy-paste Caller workflow examples
 ```
 
 ## Adding a New Reusable Workflow
@@ -16,9 +16,9 @@ examples/             Copy-paste caller workflow examples
 1. **Create the workflow file** in `.github/workflows/<name>.yml`.
 2. Use `workflow_call` as the trigger — NOT `push`, `pull_request`, etc.
 3. Document every input with a `description`, `type`, `required`, and `default`.
-4. Add a header comment block explaining the workflow purpose and an example caller snippet.
+4. Add a header comment block explaining the workflow purpose and an example Caller workflow snippet.
 5. Use composite actions from `actions/` where possible to avoid duplication.
-6. Add an example caller in `examples/<name>.yml`.
+6. Add an example Caller workflow in `examples/<name>.yml`.
 7. Update `docs/USAGE.md` with the full input/output reference.
 8. Update the root `README.md` table.
 
@@ -60,7 +60,7 @@ jobs:
 ## Modifying Existing Workflows
 
 - **Backward-compatible changes** (new optional inputs, bug fixes): merge directly.
-- **Breaking changes** (removing/renaming inputs, changing defaults that affect existing callers): bump the major version tag.
+- **Breaking changes** (removing/renaming inputs, changing defaults that affect existing Caller workflows): bump the major version tag.
 
 ## Versioning & Releases
 
@@ -102,7 +102,7 @@ git push origin v1 --force
 ### When to Bump Major
 
 - Removing or renaming a workflow input/output
-- Changing a default value that would break existing callers
+- Changing a default value that would break existing Caller workflows
 - Removing a workflow or action entirely
 
 ## Testing
@@ -129,7 +129,7 @@ This repository includes an internal workflow (`.github/workflows/test-callers.y
 
 When adding inputs or behavior to any `ci-*` workflow:
 
-1. Update the corresponding fixture so lint/test expectations still reflect real caller usage.
+1. Update the corresponding fixture so lint/test expectations still reflect real Caller workflow behavior.
 2. Keep fixture dependencies minimal and deterministic (`npm ci`, pinned/locked deps where applicable).
 3. Run `actionlint .github/workflows/*.yml` locally before opening a PR.
 4. Verify the `test-callers` workflow is green on your branch PR before merge.
@@ -139,8 +139,8 @@ secret value to satisfy the required `DOPPLER_TOKEN` contract without making liv
 
 ### Integration Testing
 
-1. Create a test branch in a consumer repository.
-2. Point the `uses:` reference to your branch: `nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch`.
+1. Create a test branch in a Workflow consumer repository.
+2. In its Caller workflow, point the Workflow invocation at your branch: `nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch`.
 3. Push and verify the workflow runs correctly.
 4. Once validated, merge to main and tag.
 
@@ -150,10 +150,10 @@ secret value to satisfy the required `DOPPLER_TOKEN` contract without making liv
 - [ ] Permissions follow least-privilege (only what the workflow needs)
 - [ ] All `shell: bash` steps use `set -euo pipefail`
 - [ ] No hardcoded secrets or tokens
-- [ ] Header comment with example caller
+- [ ] Header comment with example Caller workflow
 - [ ] `docs/USAGE.md` updated
 - [ ] `README.md` table updated
-- [ ] Example caller added/updated in `examples/`
+- [ ] Example Caller workflow added/updated in `examples/`
 
 ## Branch Protection & Branch Hygiene
 

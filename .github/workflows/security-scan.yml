@@ -4,7 +4,7 @@
 # Scans a Docker image for known CVEs using Trivy.
 # Can scan a locally-built image or a remote registry image.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     security:
 #       uses: nandohdc/gh-pipelines/.github/workflows/security-scan.yml@v1

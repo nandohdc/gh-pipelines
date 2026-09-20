@@ -4,7 +4,7 @@
 # Runs lint, unit tests, vulnerability checks, and optional integration tests
 # for Go projects. Designed to be called from any Go service repository.
 #
-# Example caller:
+# Example Caller workflow:
 #   jobs:
 #     ci:
 #       uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@v1
@@ -27,11 +27,21 @@ on:
         type: string
         required: false
         default: "."
+      cache-dependency-path:
+        description: "Path to the module's go.sum file for Go caching. Empty resolves to <working-directory>/go.sum."
+        type: string
+        required: false
+        default: ""
       golangci-lint-version:
         description: "golangci-lint version."
         type: string
         required: false
         default: "v1.64.8"
+      golangci-lint-major:
+        description: "golangci-lint major version used to select the compatible Go module path (1 or 2)."
+        type: string
+        required: false
+        default: "1"
       coverage-min:
         description: "Minimum unit-test coverage percentage."
         type: string
@@ -42,6 +52,21 @@ on:
         type: string
         required: false
         default: ""
+      coverage-artifact-name:
+        description: "Artifact name used to publish coverage.out. Must be unique when multiple Caller jobs run in one workflow."
+        type: string
+        required: false
+        default: "coverage"
+      integration-coverage-artifact-name:
+        description: "Artifact name used to publish integration-coverage.out. Must be unique when multiple Caller jobs run in one workflow."
+        type: string
+        required: false
+        default: "integration-coverage"
+      run-build:
+        description: "Run go build ./... before tests."
+        type: boolean
+        required: false
+        default: false
       run-integration:
         description: "Run integration tests (requires Testcontainers / Docker)."
         type: boolean
@@ -123,6 +148,7 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
 
       - name: Check formatting
         shell: bash
@@ -143,7 +169,25 @@ jobs:
         run: go vet ./...
 
       - name: golangci-lint
-        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@${{ inputs.golangci-lint-version }} run
+        shell: bash
+        env:
+          GOLANGCI_LINT_MAJOR: ${{ inputs.golangci-lint-major }}
+          GOLANGCI_LINT_VERSION: ${{ inputs.golangci-lint-version }}
+        run: |
+          set -euo pipefail
+
+          case "${GOLANGCI_LINT_MAJOR}" in
+            1)
+              go run "github.com/golangci/golangci-lint/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run
+              ;;
+            2)
+              go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" run
+              ;;
+            *)
+              echo "::error::golangci-lint-major must be 1 or 2."
+              exit 1
+              ;;
+          esac
 
       - name: Import direction checks
         if: inputs.run-import-direction
@@ -177,6 +221,11 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
+
+      - name: Build
+        if: inputs.run-build
+        run: go build ./...
 
       - name: Unit tests (race detector)
         run: go test -race ./...
@@ -206,7 +255,7 @@ jobs:
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
-          name: coverage
+          name: ${{ inputs.coverage-artifact-name }}
           path: ${{ inputs.working-directory }}/coverage.out
 
       - name: Contract checks
@@ -243,17 +292,27 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
 
       - name: Integration tests
+        shell: bash
+        env:
+          INTEGRATION_TAGS: ${{ inputs.integration-tags }}
+          INTEGRATION_PACKAGES: ${{ inputs.integration-packages }}
         run: |
+          set -euo pipefail
+          integration_packages=()
+          if [[ -n "${INTEGRATION_PACKAGES}" ]]; then
+            read -r -a integration_packages <<< "${INTEGRATION_PACKAGES}"
+          fi
           go test -coverprofile=integration-coverage.out \
-            -tags=${{ inputs.integration-tags }} \
-            ${{ inputs.integration-packages }}
+            "-tags=${INTEGRATION_TAGS}" \
+            "${integration_packages[@]}"
 
       - name: Upload integration coverage
         uses: actions/upload-artifact@v7
         with:
-          name: integration-coverage
+          name: ${{ inputs.integration-coverage-artifact-name }}
           path: ${{ inputs.working-directory }}/integration-coverage.out
 
   # ---------------------------------------------------------------------------
@@ -284,6 +343,7 @@ jobs:
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
+          cache-dependency-path: ${{ inputs.cache-dependency-path }}
 
       - name: govulncheck
         shell: bash
@@ -318,9 +378,17 @@ jobs:
       - name: Validate Kubernetes manifests
         if: inputs.run-k8s-validate
         shell: bash
+        env:
+          K8S_MANIFESTS_DIR: ${{ inputs.k8s-manifests-dir }}
         run: |
           set -euo pipefail
-          for f in ${{ inputs.k8s-manifests-dir }}/*.yaml; do
+          shopt -s nullglob
+          manifest_files=("${K8S_MANIFESTS_DIR}"/*.yaml)
+          if [[ ${#manifest_files[@]} -eq 0 ]]; then
+            echo "::error::No Kubernetes manifests found in ${K8S_MANIFESTS_DIR}."
+            exit 1
+          fi
+          for f in "${manifest_files[@]}"; do
             [[ "${f}" == *.example ]] && continue
             echo "Validating: ${f}"
             kubectl apply --dry-run=client -f "${f}"
@@ -329,8 +397,16 @@ jobs:
       - name: Validate Prometheus rules
         shell: bash
         if: inputs.run-prometheus-validate
+        env:
+          PROMETHEUS_RULES_DIR: ${{ inputs.prometheus-rules-dir }}
         run: |
           set -euo pipefail
+          shopt -s nullglob
+          rule_files=("${PROMETHEUS_RULES_DIR}"/*.yaml)
+          if [[ ${#rule_files[@]} -eq 0 ]]; then
+            echo "::error::No Prometheus rule files found in ${PROMETHEUS_RULES_DIR}."
+            exit 1
+          fi
           docker run --rm --entrypoint promtool \
             -v "$PWD:/work" -w /work prom/prometheus:v2.53.0 \
-            check rules ${{ inputs.prometheus-rules-dir }}/*.yaml
+            check rules "${rule_files[@]}"
