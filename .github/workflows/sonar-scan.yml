@@ -395,7 +395,7 @@ jobs:
 
       - name: Download coverage artifacts
         if: inputs.coverage-artifact-pattern != ''
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: ${{ inputs.coverage-artifact-pattern }}
           path: ${{ inputs.coverage-artifact-path }}
