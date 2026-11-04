@@ -29,6 +29,11 @@ downloaded profiles in `pre-scan-command`. This preserves isolation until the
 one aggregation step owned by the Workflow consumer and lets integration smoke detect the Sonar
 workflow reference.
 
+Go coverage remains unit-only by default. A consumer may opt into combined
+coverage with `coverage-tags` and `coverage-instrument-packages`; report that
+artifact as combined rather than unit-only. The separate integration job and
+its artifact remain available.
+
 ## Smoke Implementation (Current)
 
 Integration smoke is a parse-and-lint drift probe against each Canary consumer

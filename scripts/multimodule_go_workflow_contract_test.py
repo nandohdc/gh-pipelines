@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-import sys
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -78,10 +78,13 @@ def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
     workflow = read(CI_GO)
     zizmor_config = read(ZIZMOR_CONFIG)
     integration = step_block(workflow, "Integration tests")
+    coverage = step_block(workflow, "Coverage threshold")
     manifests = step_block(workflow, "Validate Kubernetes manifests")
     prometheus = step_block(workflow, "Validate Prometheus rules")
 
     for block, input_name, environment_name in (
+        (coverage, "coverage-tags", "COVERAGE_TAGS"),
+        (coverage, "coverage-instrument-packages", "COVERAGE_INSTRUMENT_PACKAGES"),
         (integration, "integration-tags", "INTEGRATION_TAGS"),
         (integration, "integration-packages", "INTEGRATION_PACKAGES"),
         (manifests, "k8s-manifests-dir", "K8S_MANIFESTS_DIR"),
@@ -94,6 +97,8 @@ def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
         )
 
     assert_contains(integration, '"-tags=${INTEGRATION_TAGS}"', "integration tags must be one shell argument")
+    assert_contains(coverage, '"-tags=${COVERAGE_TAGS}"', "coverage tags must be one shell argument")
+    assert_contains(coverage, '"-coverpkg=${COVERAGE_INSTRUMENT_PACKAGES}"', "coverage package patterns must be one shell argument")
     assert_contains(
         integration,
         'read -r -a integration_packages <<< "${INTEGRATION_PACKAGES}"',
@@ -104,6 +109,7 @@ def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
     assert_contains(prometheus, 'rule_files=("${PROMETHEUS_RULES_DIR}"/*.yaml)', "rule paths must be quoted")
 
     for step_name, block in (
+        ("Coverage threshold", coverage),
         ("Integration tests", integration),
         ("Validate Kubernetes manifests", manifests),
         ("Validate Prometheus rules", prometheus),
@@ -145,6 +151,8 @@ def test_internal_fixture_exercises_optional_build_and_artifact_name() -> None:
 
     assert_contains(callers, "coverage-artifact-name: fixture-go-coverage", "fixture must exercise custom artifact naming")
     assert_contains(callers, "run-build: true", "fixture must exercise optional build validation")
+    assert_contains(callers, "coverage-tags: integration", "fixture must exercise combined coverage tags")
+    assert_contains(callers, "coverage-instrument-packages: ./...", "fixture must exercise combined instrumentation")
     for expected in (
         "test-ci-go-multimodule-api:",
         "test-ci-go-multimodule-cli:",

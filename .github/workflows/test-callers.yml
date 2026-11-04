@@ -25,7 +25,9 @@ jobs:
     uses: ./.github/workflows/ci-go.yml
     with:
       working-directory: tests/fixtures/go
-      coverage-min: "0"
+      coverage-min: "60"
+      coverage-tags: integration
+      coverage-instrument-packages: ./...
       coverage-artifact-name: fixture-go-coverage
       run-build: true
       runner-label: ${{ vars.RUNNER_LABEL }}
