@@ -133,7 +133,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -144,7 +144,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@2af9ec8d986dda763370fdf7a36b6b51a0c8cfdb
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -206,7 +206,7 @@ jobs:
       CGO_ENABLED: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -217,7 +217,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@2af9ec8d986dda763370fdf7a36b6b51a0c8cfdb
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -253,7 +253,7 @@ jobs:
           fi
 
       - name: Upload coverage artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.coverage-artifact-name }}
           path: ${{ inputs.working-directory }}/coverage.out
@@ -277,7 +277,7 @@ jobs:
       CGO_ENABLED: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -288,7 +288,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@2af9ec8d986dda763370fdf7a36b6b51a0c8cfdb
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -310,7 +310,7 @@ jobs:
             "${integration_packages[@]}"
 
       - name: Upload integration coverage
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: ${{ inputs.integration-coverage-artifact-name }}
           path: ${{ inputs.working-directory }}/integration-coverage.out
@@ -328,7 +328,7 @@ jobs:
       CGO_ENABLED: 1
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Install build-essential
         if: runner.os == 'Linux' && inputs.runner-label != ''
@@ -339,7 +339,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@2af9ec8d986dda763370fdf7a36b6b51a0c8cfdb
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -349,7 +349,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           mapfile -t packages < <(go list ./... | grep -v '/internal/testutil$')
           govulncheck "${packages[@]}"
 
@@ -365,7 +365,7 @@ jobs:
         working-directory: ${{ inputs.working-directory }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up kubectl
         if: inputs.run-k8s-validate

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sys
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,6 +17,26 @@ ZIZMOR_CONFIG = ROOT / ".zizmor.yml"
 SETUP_GO = ROOT / "actions" / "setup-go" / "action.yml"
 SONAR_SCAN = ROOT / ".github" / "workflows" / "sonar-scan.yml"
 TEST_CALLERS = ROOT / ".github" / "workflows" / "test-callers.yml"
+
+
+def test_go_workflow_dependencies_use_immutable_refs() -> None:
+    for path in (CI_GO, SETUP_GO):
+        for line in read(path).splitlines():
+            if line.lstrip().startswith("#"):
+                continue
+            match = re.search(r"\buses:\s*([^\s#]+)", line)
+            if not match:
+                continue
+            ref = match.group(1)
+            if ref.startswith("./"):
+                continue
+            if not re.fullmatch(r"[^@]+@[0-9a-f]{40}", ref):
+                raise AssertionError(f"{path}: mutable action dependency: {ref}")
+    assert_contains(
+        read(CI_GO),
+        "golang.org/x/vuln/cmd/govulncheck@v1.9.0",
+        "Go vulnerability scanner must use a fixed version",
+    )
 
 
 def test_ci_go_supports_independent_module_contracts() -> None:
@@ -138,6 +159,7 @@ def test_internal_fixture_exercises_optional_build_and_artifact_name() -> None:
 
 
 def main() -> None:
+    test_go_workflow_dependencies_use_immutable_refs()
     test_ci_go_supports_independent_module_contracts()
     test_ci_go_routes_shell_inputs_through_environment_variables()
     test_sonar_scan_can_consume_caller_coverage_artifacts()
