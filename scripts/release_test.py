@@ -48,9 +48,12 @@ class FakeGitHub:
         return list(self.pr_labels.get(pr_number, []))
 
     def release_exists(self, tag: str) -> bool:
-        if self.fail_on == "release_exists":
+        return self.get_release(tag) is not None
+
+    def get_release(self, tag: str) -> Optional[dict]:
+        if self.fail_on in ("release_exists", "get_release"):
             raise ReleaseError("simulated gh release view failure")
-        return tag in self.releases
+        return self.releases.get(tag)
 
     def create_release(self, tag: str, target_sha: str, title: str) -> None:
         if self.fail_on == "create_release":
@@ -297,18 +300,24 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
 
     def test_skips_release_creation_when_github_release_already_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
-            _git(work, "tag", "v0.0.2", sha)
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v0.0.2", first_sha)
             _git(work, "push", "origin", "refs/tags/v0.0.2")
+
+            (work / "next.txt").write_text("next\n", encoding="utf-8")
+            _git(work, "add", "next.txt")
+            _git(work, "commit", "-m", "fix: retry (#11)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
 
             github = FakeGitHub(
                 pr_labels={11: ["release:patch"]},
-                existing_releases={"v0.0.3": {"tag": "v0.0.3", "target_sha": sha, "title": "existing"}},
+                existing_releases={"v0.0.3": {"tag": "v0.0.3", "target_sha": second_sha, "title": "existing"}},
             )
             outcome = run_release(
                 ReleaseConfig(
                     repository="nandohdc/gh-pipelines",
-                    sha=sha,
+                    sha=second_sha,
                     head_commit_message="fix: retry (#11)",
                     workdir=work,
                 ),
@@ -317,7 +326,7 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
             self.assertEqual(outcome.status, "published")
             self.assertEqual(outcome.next_tag, "v0.0.3")
             self.assertEqual(github.releases["v0.0.3"]["title"], "existing")
-            self.assertEqual(_remote_tags(bare)["v0"], sha)
+            self.assertEqual(_remote_tags(bare)["v0"], second_sha)
 
     def test_fails_when_attestation_manifest_lacks_attest_sbom(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -757,6 +766,311 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
             self.assertEqual(_remote_tags(bare), {"v1.0.0": first_sha, "v1": first_sha})
             self.assertEqual(github.releases, {})
 
+    def test_retry_after_completed_release_is_noop_even_if_labels_changed_or_removed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "fix.txt").write_text("fix\n", encoding="utf-8")
+            _git(work, "add", "fix.txt")
+            _git(work, "commit", "-m", "fix: single release (#230)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(pr_labels={230: ["release:patch"]})
+            first_outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="fix: single release (#230)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(first_outcome.status, "published")
+            self.assertEqual(first_outcome.next_tag, "v1.0.1")
+
+            # Retry with edited label: must remain a no-op for v1.0.1 (no v1.1.0 or v1.0.2).
+            github.pr_labels[230] = ["release:minor"]
+            second_outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="fix: single release (#230)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(second_outcome.status, "noop")
+            self.assertEqual(second_outcome.reason, "already_released")
+            self.assertEqual(second_outcome.next_tag, "v1.0.1")
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1.0.1": second_sha, "v1": second_sha},
+            )
+            self.assertEqual(
+                github.releases,
+                {"v1.0.1": {"tag": "v1.0.1", "target_sha": second_sha, "title": "v1.0.1"}},
+            )
+
+            # Retry after label removal: still a no-op for v1.0.1.
+            github.pr_labels[230] = []
+            third_outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="fix: single release (#230)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(third_outcome.status, "noop")
+            self.assertEqual(third_outcome.reason, "already_released")
+            self.assertEqual(third_outcome.next_tag, "v1.0.1")
+
+    def test_resumes_after_floating_tag_interruption_even_after_label_edit(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "fix.txt").write_text("fix\n", encoding="utf-8")
+            _git(work, "add", "fix.txt")
+            _git(work, "commit", "-m", "fix: partial tag push (#231)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            _install_pre_receive_hook(bare, "refs/tags/v1")
+            github = FakeGitHub(pr_labels={231: ["release:patch"]})
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=second_sha,
+                        head_commit_message="fix: partial tag push (#231)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1.0.1": second_sha, "v1": first_sha},
+            )
+            self.assertEqual(github.releases, {})
+
+            # Clear the hook failure, mutate PR label, and retry: must resume v1.0.1.
+            (bare / "hooks" / "pre-receive").unlink()
+            github.pr_labels[231] = ["release:minor"]
+            resumed = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="fix: partial tag push (#231)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(resumed.status, "published")
+            self.assertEqual(resumed.reason, "resumed")
+            self.assertEqual(resumed.next_tag, "v1.0.1")
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1.0.1": second_sha, "v1": second_sha},
+            )
+            self.assertEqual(
+                github.releases,
+                {"v1.0.1": {"tag": "v1.0.1", "target_sha": second_sha, "title": "v1.0.1"}},
+            )
+
+    def test_resumes_after_github_release_creation_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "fix.txt").write_text("fix\n", encoding="utf-8")
+            _git(work, "add", "fix.txt")
+            _git(work, "commit", "-m", "fix: partial release note (#232)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(pr_labels={232: ["release:patch"]}, fail_on="create_release")
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=second_sha,
+                        head_commit_message="fix: partial release note (#232)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1.0.1": second_sha, "v1": second_sha},
+            )
+            self.assertEqual(github.releases, {})
+
+            github.fail_on = None
+            resumed = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="fix: partial release note (#232)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(resumed.status, "published")
+            self.assertEqual(resumed.reason, "resumed")
+            self.assertEqual(resumed.next_tag, "v1.0.1")
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1.0.1": second_sha, "v1": second_sha},
+            )
+            self.assertEqual(
+                github.releases,
+                {"v1.0.1": {"tag": "v1.0.1", "target_sha": second_sha, "title": "v1.0.1"}},
+            )
+
+    def test_stale_retry_after_newer_release_never_moves_floating_tag_backward(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "newer.txt").write_text("newer\n", encoding="utf-8")
+            _git(work, "add", "newer.txt")
+            _git(work, "commit", "-m", "fix: newer release (#234)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(
+                pr_labels={233: ["release:patch"], 234: ["release:patch"]},
+                existing_releases={"v1.0.0": {"tag": "v1.0.0", "target_sha": first_sha, "title": "v1.0.0"}},
+            )
+            run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="fix: newer release (#234)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(_remote_tags(bare)["v1"], second_sha)
+
+            # Stale retry of already-completed first_sha is a no-op and keeps v1 at second_sha.
+            stale_noop = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=first_sha,
+                    head_commit_message="fix: older release (#233)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(stale_noop.status, "noop")
+            self.assertEqual(stale_noop.next_tag, "v1.0.0")
+            self.assertEqual(_remote_tags(bare)["v1"], second_sha)
+
+            # Stale retry of first_sha with missing GitHub release repairs release note without moving v1 back.
+            del github.releases["v1.0.0"]
+            stale_repaired = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=first_sha,
+                    head_commit_message="fix: older release (#233)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(stale_repaired.status, "published")
+            self.assertEqual(stale_repaired.reason, "resumed")
+            self.assertEqual(stale_repaired.next_tag, "v1.0.0")
+            self.assertEqual(github.releases["v1.0.0"]["target_sha"], first_sha)
+            self.assertEqual(_remote_tags(bare)["v1"], second_sha)
+
+    def test_stale_pre_tag_retry_fails_visibly_when_descendant_already_tagged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            (work / "newer.txt").write_text("newer\n", encoding="utf-8")
+            _git(work, "add", "newer.txt")
+            _git(work, "commit", "-m", "fix: newer already tagged (#235)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+            _git(work, "tag", "v1.0.1", second_sha)
+            _git(work, "tag", "v1", second_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.1", "refs/tags/v1")
+
+            github = FakeGitHub(pr_labels={234: ["release:patch"]})
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=first_sha,
+                        head_commit_message="fix: stale untagged commit (#234)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+            self.assertEqual(_remote_tags(bare), {"v1.0.1": second_sha, "v1": second_sha})
+
+    def test_rejects_conflicting_github_release_target_and_duplicate_exact_tags(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            # 1. Conflicting existing GitHub release target SHA fails visibly.
+            sub1 = root / "conflict_release"
+            sub1.mkdir()
+            bare, work, first_sha = _create_repo_with_bare_remote(sub1)
+            (work / "fix.txt").write_text("fix\n", encoding="utf-8")
+            _git(work, "add", "fix.txt")
+            _git(work, "commit", "-m", "fix: mismatched release target (#236)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(
+                pr_labels={236: ["release:patch"]},
+                existing_releases={
+                    "v0.0.1": {"tag": "v0.0.1", "targetCommitish": first_sha, "name": "v0.0.1"}
+                },
+            )
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=second_sha,
+                        head_commit_message="fix: mismatched release target (#236)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+
+            # 2. Multiple exact semver tags on the same commit fails visibly.
+            sub2 = root / "duplicate_tags"
+            sub2.mkdir()
+            bare2, work2, sha2 = _create_repo_with_bare_remote(sub2)
+            _git(work2, "tag", "v1.0.0", sha2)
+            _git(work2, "tag", "v1.0.1", sha2)
+            _git(work2, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1.0.1")
+
+            github2 = FakeGitHub(pr_labels={237: ["release:patch"]})
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=sha2,
+                        head_commit_message="fix: duplicate tags (#237)",
+                        workdir=work2,
+                    ),
+                    github2,
+                )
+
 
 _FAKE_GH_SCRIPT = """#!/usr/bin/env python3
 import json
@@ -1019,6 +1333,67 @@ class ReleaseCliProcessTest(unittest.TestCase):
             self.assertEqual(_remote_tags(bare), {"v1.10.0": sha, "v1": sha})
             recorded = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(recorded["releases"], {})
+
+    def test_cli_resumes_partial_release_and_logs_recovery_summary_without_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bare, work, first_sha = _create_repo_with_bare_remote(root)
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "fix.txt").write_text("fix\n", encoding="utf-8")
+            _git(work, "add", "fix.txt")
+            _git(work, "commit", "-m", "fix: cli recovery (#240)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            bin_dir, state_path = _write_fake_gh(
+                root,
+                {
+                    "pr_labels": {"240": ["release:patch"]},
+                    "releases": {},
+                    "fail_command": "release_create",
+                },
+            )
+            first_proc = _run_release_cli(
+                work,
+                bin_dir,
+                state_path,
+                sha=second_sha,
+                message="fix: cli recovery (#240)",
+            )
+            self.assertEqual(first_proc.returncode, 1)
+            self.assertNotIn("test-token", first_proc.stdout + first_proc.stderr)
+
+            # Retry after clearing gh release create failure and changing label.
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["fail_command"] = None
+            state["pr_labels"]["240"] = ["release:minor"]
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+
+            second_proc = _run_release_cli(
+                work,
+                bin_dir,
+                state_path,
+                sha=second_sha,
+                message="fix: cli recovery (#240)",
+            )
+            self.assertEqual(second_proc.returncode, 0, msg=second_proc.stderr)
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1.0.1": second_sha, "v1": second_sha},
+            )
+            recorded = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                recorded["releases"],
+                {"v1.0.1": {"tag": "v1.0.1", "target_sha": second_sha, "title": "v1.0.1"}},
+            )
+            combined = second_proc.stdout + second_proc.stderr
+            self.assertIn(second_sha, combined)
+            self.assertIn("v1.0.1", combined)
+            self.assertIn("resumed", combined)
+            self.assertNotIn("test-token", combined)
 
 
 if __name__ == "__main__":

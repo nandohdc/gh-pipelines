@@ -52,3 +52,19 @@ _Avoid_: point tag, snapshot tag
 **Maintenance branch**:
 A `release/v<N>` branch rooted in an older Major lineage so compatible `patch` and `minor` releases can publish without inheriting newer-major commits from `main`.
 _Avoid_: hotfix branch, support branch
+
+**Release intent**:
+A merged pull request on `main` or a `Maintenance branch` carrying a `release:*` label that commits a specific target SHA to one deterministic `Exact release tag` within its target `Major lineage`.
+_Avoid_: release request, pending tag
+
+**Synthetic consumer repository**:
+A dedicated non-production `Consumer repository` (`nandohdc/gh-pipelines-hosted-acceptance`) owned by the maintainer to execute candidate workflows and composite actions on GitHub-hosted runners without production credentials.
+_Avoid_: test repo, mock consumer, canary
+
+**Candidate smoke**:
+An executed run in the `Synthetic consumer repository` that exercises candidate reusable workflows and affected composite actions at an exact candidate commit SHA.
+_Avoid_: integration smoke, static drift check
+
+**Candidate promotion**:
+Advancing a `Major lineage`'s `Floating major tag` and publishing its `Exact release tag` and GitHub Release after exact-SHA required checks and `Candidate smoke` succeed.
+_Avoid_: tag push, release cut
