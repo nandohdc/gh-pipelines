@@ -23,6 +23,8 @@ Notes:
 
 ### Added
 
+- `scripts/helm_environment.py` (`#188`): added GitHub Environment protection verifier (`verify`) checking environment existence, `required_reviewers`, and default-branch deployment policies so merely named/unprotected environments cannot satisfy protected manual deployment acceptance.
+- `examples/helm-deploy-manual.yml` (`#188`): added Caller workflow example for explicitly opted-in protected manual Helm deployments (`allow-manual-deploy: true` + `environment`).
 - `docs/adr/0001-major-lineage-releases.md` and `CONTEXT.md`: documented the multi-lineage versioning model (`Major lineage`, `Floating major tag`, `Exact release tag`, `Maintenance branch`) and `release/v[0-9]+` maintenance route.
 - `scripts/contract_lib.py`: extracted shared helper functions (`read`, `assert_contains`, `assert_not_contains`, `assert_order`, `step_block`) from the three contract test scripts into a coverable module that produces SonarQube coverage data.
 - `scripts/contract_lib_test.py`: pytest unit tests for `contract_lib.py` with 100% coverage, wired into `lint.yml`.
@@ -34,6 +36,7 @@ Notes:
 
 ### Changed
 
+- `.github/workflows/helm-deploy.yml` (`@v2`, `#188`): added explicitly opted-in protected manual deployment (`allow-manual-deploy: true` + non-empty `environment`, safe defaults `false` / `""`), split preflight `authorize` (unprivileged, no secrets) from `deploy` (`environment:` approval gate before `Setup doctl + kubeconfig`, `Helm`, and `post-deploy-kubectl` plus defense-in-depth `Verify deployment authorization`), updated internal action refs to `@v2`, and extended `scripts/helm_deploy_workflow_contract_test.py` and `scripts/candidate_smoke.py`.
 - `.github/workflows/helm-deploy.yml` (`@v2` breaking policy change; `#187`): authorize `github.event_name`, `github.ref`, `github.event.repository.default_branch`, and pull-request fork metadata **before** obtaining DigitalOcean credentials (`actions/setup-doctl`), running `helm upgrade --install`, or executing `post-deploy-kubectl`. Only default-branch pushes may perform automatic real deployments (`mode=deploy`); same-repository pull requests execute dry-runs (`mode=dry-run`, `deploy (dry-run) / <release-name>`) with `post-deploy-kubectl` disabled; feature pushes, fork pull requests, `pull_request_target`, `workflow_dispatch` (pending protected opt-in), and unsupported events fail closed before credential setup. Preserves existing `@v1` releases unchanged and adds `v1 -> v2` migration guidance plus `scripts/helm_deploy_workflow_contract_test.py` and hosted `candidate_smoke` verification.
 - `scripts/release.py`, `.github/workflows/release.yml`, `.github/workflows/lint.yml`, and `.github/workflows/test-callers.yml`: isolated release version calculation and floating major tag updates per compatible major lineage (`v0`, `v1`, `v2`, …), introduced explicit `ReleasePlan` tracking, rejected conflicting immutable `vX.Y.Z` tags without force-rewriting, and added `release/v[0-9]+` maintenance branch support (with branch-creation push guards and `release:major` rejection on maintenance branches).
 - `README.md`, `docs/USAGE.md`, `docs/CONTRIBUTING.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `AGENTS.md`, and `.codex/STANDARDS.md`: updated versioning, compatibility, breaking-change, and consumer migration guidance for independent major lineages (`#182`).

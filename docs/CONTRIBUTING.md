@@ -159,7 +159,7 @@ Candidate smoke orchestration (`scripts/candidate_smoke.py`) is tested against t
 python3 -m unittest -v scripts/candidate_smoke_test.py
 ```
 
-Helm deployment event/ref authorization and mocked `doctl`/`helm`/`kubectl` behavior are tested via:
+Helm deployment event/ref/manual-opt-in authorization, mocked `doctl`/`helm`/`kubectl` behavior, and GitHub Environment protection checks (`scripts/helm_environment.py`) are tested via:
 
 ```bash
 python3 scripts/helm_deploy_workflow_contract_test.py

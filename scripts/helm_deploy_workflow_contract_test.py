@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Contract and executable behavior tests for `.github/workflows/helm-deploy.yml` (#187)."""
+"""Contract and executable behavior tests for `.github/workflows/helm-deploy.yml` (#187, #188)."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 import yaml
 
@@ -20,10 +20,13 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from scripts.contract_lib import assert_contains, assert_not_contains, assert_order, read
+from scripts.helm_environment import HelmEnvironmentError, verify_protected_environment
 
 HELM_DEPLOY = ROOT / ".github" / "workflows" / "helm-deploy.yml"
+HELM_ENVIRONMENT_SCRIPT = ROOT / "scripts" / "helm_environment.py"
 SETUP_DOCTL = ROOT / "actions" / "setup-doctl" / "action.yml"
 HELM_EXAMPLE = ROOT / "examples" / "helm-deploy.yml"
+HELM_MANUAL_EXAMPLE = ROOT / "examples" / "helm-deploy-manual.yml"
 LINT_WORKFLOW = ROOT / ".github" / "workflows" / "lint.yml"
 README = ROOT / "README.md"
 USAGE = ROOT / "docs" / "USAGE.md"
@@ -41,13 +44,38 @@ class SimulationResult:
     authorize_stderr: str
     outputs: Dict[str, str]
     commands: List[List[str]]
+    verify_returncode: int | None = None
     deploy_returncode: int | None = None
     post_deploy_returncode: int | None = None
 
 
-def _load_deploy_steps() -> Dict[str, Dict[str, Any]]:
-    data = yaml.safe_load(read(HELM_DEPLOY))
-    steps = data["jobs"]["deploy"]["steps"]
+class FakeEnvironmentClient:
+    """In-memory adapter stubbing GitHub Environment REST responses."""
+
+    def __init__(
+        self,
+        environments: Optional[Dict[str, Dict[str, Any]]] = None,
+        branch_policies: Optional[Dict[str, List[Dict[str, Any]]]] = None,
+    ) -> None:
+        self.environments = dict(environments or {})
+        self.branch_policies = dict(branch_policies or {})
+
+    def get_environment(self, repo: str, environment: str) -> Optional[Dict[str, Any]]:
+        return self.environments.get(f"{repo}:{environment}")
+
+    def list_deployment_branch_policies(
+        self, repo: str, environment: str
+    ) -> List[Dict[str, Any]]:
+        return list(self.branch_policies.get(f"{repo}:{environment}", []))
+
+
+def _load_workflow() -> Dict[str, Any]:
+    return yaml.load(read(HELM_DEPLOY), Loader=yaml.BaseLoader)
+
+
+def _step_map(job_id: str) -> Dict[str, Dict[str, Any]]:
+    data = _load_workflow()
+    steps = data["jobs"][job_id]["steps"]
     return {str(step["name"]): step for step in steps if isinstance(step, dict) and "name" in step}
 
 
@@ -104,6 +132,8 @@ def _build_base_env(
     repository: str,
     head_repo: str,
     head_fork: str,
+    allow_manual_deploy: str,
+    environment_input: str,
 ) -> Dict[str, str]:
     env = os.environ.copy()
     env.update(
@@ -117,8 +147,9 @@ def _build_base_env(
             "GITHUB_REPOSITORY_NAME": repository,
             "PULL_REQUEST_HEAD_REPOSITORY": head_repo,
             "PULL_REQUEST_HEAD_FORK": head_fork,
-            "INPUT_DIGITALOCEAN_TOKEN": "do-pat-synthetic-nonprod",
-            "INPUT_CLUSTER_ID": "cluster-nonprod-0000",
+            "ALLOW_MANUAL_DEPLOY": allow_manual_deploy,
+            "DEPLOY_ENVIRONMENT": environment_input,
+            "INPUT_ENVIRONMENT": environment_input,
             "CLUSTER_ID": "cluster-nonprod-0000",
         }
     )
@@ -133,15 +164,20 @@ def _simulate_helm_workflow(
     repository: str = "nandohdc/sample-app",
     head_repo: str = "",
     head_fork: str = "",
+    allow_manual_deploy: str = "false",
+    environment_input: str = "",
+    environment_approved: bool = True,
     chart_version: str = "",
     extra_helm_args: str = "",
     post_deploy_kubectl: str = "kubectl get pods -n my-app",
 ) -> SimulationResult:
-    """Execute the real helm-deploy.yml bash bodies with stubbed doctl/helm/kubectl binaries."""
-    steps = _load_deploy_steps()
-    auth_run = str(steps["Authorize deployment context"]["run"])
-    deploy_run = str(steps["Deploy (or dry-run on PR)"]["run"])
-    post_run = str(steps["Post-deploy kubectl commands"]["run"])
+    """Execute the real helm-deploy.yml bash bodies across authorize and deploy jobs."""
+    auth_steps = _step_map("authorize")
+    deploy_steps = _step_map("deploy")
+    auth_run = str(auth_steps["Authorize deployment context"]["run"])
+    verify_run = str(deploy_steps["Verify deployment authorization"]["run"])
+    deploy_run = str(deploy_steps["Deploy (or dry-run on PR)"]["run"])
+    post_run = str(deploy_steps["Post-deploy kubectl commands"]["run"])
     doctl_run = _setup_doctl_script()
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -149,9 +185,11 @@ def _simulate_helm_workflow(
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
         log_file = tmp_path / "commands.log"
-        github_output = tmp_path / "github_output.txt"
+        auth_output = tmp_path / "auth_output.txt"
+        verify_output = tmp_path / "verify_output.txt"
         github_env = tmp_path / "github_env.txt"
-        github_output.write_text("", encoding="utf-8")
+        auth_output.write_text("", encoding="utf-8")
+        verify_output.write_text("", encoding="utf-8")
         github_env.write_text("", encoding="utf-8")
 
         for tool in ("doctl", "helm", "kubectl"):
@@ -159,7 +197,7 @@ def _simulate_helm_workflow(
 
         env = _build_base_env(
             bin_dir=bin_dir,
-            github_output=github_output,
+            github_output=auth_output,
             github_env=github_env,
             event_name=event_name,
             ref=ref,
@@ -167,6 +205,8 @@ def _simulate_helm_workflow(
             repository=repository,
             head_repo=head_repo,
             head_fork=head_fork,
+            allow_manual_deploy=allow_manual_deploy,
+            environment_input=environment_input,
         )
 
         auth_proc = subprocess.run(
@@ -176,7 +216,7 @@ def _simulate_helm_workflow(
             text=True,
             check=False,
         )
-        outputs = _parse_kv_file(github_output)
+        outputs = _parse_kv_file(auth_output)
         if auth_proc.returncode != 0:
             return SimulationResult(
                 authorized=False,
@@ -188,29 +228,75 @@ def _simulate_helm_workflow(
             )
 
         mode = outputs.get("mode", "")
+        manual_deploy = outputs.get("manual-deploy", "false")
         acquire_creds = outputs.get("acquire-credentials", "false")
         allow_post = outputs.get("allow-post-deploy", "false")
+        resolved_env = outputs.get("environment", "")
 
-        if acquire_creds == "true" and mode in ("deploy", "dry-run"):
+        # Simulate GitHub Environment approval gate holding the `deploy` job before any step runs.
+        if resolved_env and not environment_approved:
+            return SimulationResult(
+                authorized=True,
+                authorize_returncode=auth_proc.returncode,
+                authorize_stdout=auth_proc.stdout,
+                authorize_stderr=auth_proc.stderr,
+                outputs=outputs,
+                commands=_read_command_log(log_file),
+            )
+
+        verify_env = dict(
+            env,
+            GITHUB_OUTPUT=str(verify_output),
+            AUTHORIZED_MODE=mode,
+            AUTHORIZED_MANUAL_DEPLOY=manual_deploy,
+            AUTHORIZED_ACQUIRE_CREDENTIALS=acquire_creds,
+            AUTHORIZED_ALLOW_POST_DEPLOY=allow_post,
+            AUTHORIZED_ENVIRONMENT=resolved_env,
+        )
+        verify_proc = subprocess.run(
+            ["bash", "-c", verify_run],
+            env=verify_env,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if verify_proc.returncode != 0:
+            return SimulationResult(
+                authorized=True,
+                authorize_returncode=auth_proc.returncode,
+                authorize_stdout=auth_proc.stdout,
+                authorize_stderr=auth_proc.stderr,
+                outputs=outputs,
+                commands=_read_command_log(log_file),
+                verify_returncode=verify_proc.returncode,
+            )
+
+        verified = _parse_kv_file(verify_output)
+        v_mode = verified.get("mode", "")
+        v_manual = verified.get("manual-deploy", "false")
+        v_creds = verified.get("acquire-credentials", "false")
+        v_post = verified.get("allow-post-deploy", "false")
+        v_env = verified.get("environment", "")
+
+        if v_creds == "true" and v_mode in ("deploy", "dry-run"):
             subprocess.run(["bash", "-c", doctl_run], env=env, check=True, capture_output=True, text=True)
 
-        deploy_env = dict(env)
-        deploy_env.update(_parse_kv_file(github_env))
-        deploy_env.update(
-            {
-                "HELM_RELEASE_NAME": "my-app",
-                "HELM_CHART": "./chart",
-                "HELM_NAMESPACE": "my-app",
-                "HELM_VALUES_FILE": "values.yaml",
-                "HELM_TIMEOUT": "10m",
-                "HELM_CHART_VERSION": chart_version,
-                "HELM_EXTRA_ARGS": extra_helm_args,
-                "HELM_DEPLOY_MODE": mode,
-            }
+        deploy_env = dict(
+            env,
+            HELM_RELEASE_NAME="my-app",
+            HELM_CHART="./chart",
+            HELM_NAMESPACE="my-app",
+            HELM_VALUES_FILE="values.yaml",
+            HELM_TIMEOUT="10m",
+            HELM_CHART_VERSION=chart_version,
+            HELM_EXTRA_ARGS=extra_helm_args,
+            HELM_DEPLOY_MODE=v_mode,
+            HELM_MANUAL_DEPLOY=v_manual,
+            HELM_ENVIRONMENT=v_env,
         )
 
         deploy_rc: int | None = None
-        if mode in ("deploy", "dry-run"):
+        if v_mode in ("deploy", "dry-run"):
             deploy_proc = subprocess.run(
                 ["bash", "-c", deploy_run],
                 env=deploy_env,
@@ -221,14 +307,12 @@ def _simulate_helm_workflow(
             deploy_rc = deploy_proc.returncode
 
         post_rc: int | None = None
-        if mode == "deploy" and allow_post == "true" and post_deploy_kubectl != "":
-            post_env = dict(deploy_env)
-            post_env.update(
-                {
-                    "HELM_DEPLOY_MODE": mode,
-                    "HELM_ALLOW_POST_DEPLOY": allow_post,
-                    "POST_DEPLOY_KUBECTL": post_deploy_kubectl,
-                }
+        if v_mode == "deploy" and v_post == "true" and post_deploy_kubectl != "":
+            post_env = dict(
+                deploy_env,
+                HELM_DEPLOY_MODE=v_mode,
+                HELM_ALLOW_POST_DEPLOY=v_post,
+                POST_DEPLOY_KUBECTL=post_deploy_kubectl,
             )
             post_proc = subprocess.run(
                 ["bash", "-c", post_run],
@@ -246,6 +330,7 @@ def _simulate_helm_workflow(
             authorize_stderr=auth_proc.stderr,
             outputs=outputs,
             commands=_read_command_log(log_file),
+            verify_returncode=verify_proc.returncode,
             deploy_returncode=deploy_rc,
             post_deploy_returncode=post_rc,
         )
@@ -255,8 +340,12 @@ def test_helm_deploy_workflow_structure_and_guards() -> None:
     text = read(HELM_DEPLOY)
     assert_order(
         text,
-        "- name: Checkout",
+        "\njobs:\n",
+        "\n  authorize:",
         "- name: Authorize deployment context",
+        "\n  deploy:",
+        "- name: Checkout",
+        "- name: Verify deployment authorization",
         "- name: Setup doctl + kubeconfig",
         "- name: Setup Helm + repos",
         "- name: Deploy (or dry-run on PR)",
@@ -269,7 +358,7 @@ def test_helm_deploy_workflow_structure_and_guards() -> None:
         "helm-deploy.yml must not use event-only exclusion bypasses for post-deploy commands",
     )
 
-    data = yaml.load(text, Loader=yaml.BaseLoader)
+    data = _load_workflow()
     workflow_call = data["on"]["workflow_call"]
     expected_inputs = {
         "release-name",
@@ -283,35 +372,54 @@ def test_helm_deploy_workflow_structure_and_guards() -> None:
         "post-deploy-kubectl",
         "extra-helm-repos",
         "runner-label",
+        "allow-manual-deploy",
+        "environment",
     }
     assert expected_inputs.issubset(set(workflow_call["inputs"].keys())), (
         f"missing expected inputs in helm-deploy.yml: {expected_inputs - set(workflow_call['inputs'].keys())}"
     )
+    assert workflow_call["inputs"]["allow-manual-deploy"]["type"] == "boolean"
+    assert workflow_call["inputs"]["allow-manual-deploy"]["default"] == "false"
+    assert workflow_call["inputs"]["environment"]["type"] == "string"
+    assert workflow_call["inputs"]["environment"]["default"] == ""
     assert "digitalocean-token" in workflow_call["secrets"], "missing digitalocean-token secret"
     assert data["permissions"] == {"contents": "read"}, "helm-deploy.yml must keep least-privilege permissions"
 
-    job = data["jobs"]["deploy"]
-    assert "inputs.runner-label" in str(job["runs-on"]), "must preserve downstream runner-label support"
-    assert "deploy (dry-run)" in str(job["name"]), "job name must distinguish dry-run from real deploy"
+    auth_job = data["jobs"]["authorize"]
+    assert "environment" not in auth_job, "authorize job must not hold environment gate before validation"
+    assert "digitalocean-token" not in yaml.dump(auth_job), "authorize job must not receive deployment secret"
+    assert "inputs.runner-label" in str(auth_job["runs-on"])
 
-    steps = _load_deploy_steps()
-    for step_name, step in steps.items():
-        if "run" in step:
-            assert "${{" not in str(step["run"]), (
-                f"helm-deploy.yml step '{step_name}' must pass context/inputs via env, not inline template interpolation"
-            )
+    deploy_job = data["jobs"]["deploy"]
+    assert deploy_job["needs"] == "authorize"
+    assert "needs.authorize.outputs.environment" in str(deploy_job.get("environment", ""))
+    assert "inputs.runner-label" in str(deploy_job["runs-on"]), "must preserve downstream runner-label support"
+    assert "deploy (dry-run)" in str(deploy_job["name"]), "job name must distinguish dry-run from real deploy"
 
-    setup_doctl_if = str(steps["Setup doctl + kubeconfig"].get("if", ""))
-    setup_helm_if = str(steps["Setup Helm + repos"].get("if", ""))
-    deploy_if = str(steps["Deploy (or dry-run on PR)"].get("if", ""))
-    post_if = str(steps["Post-deploy kubectl commands"].get("if", ""))
+    for job_id in ("authorize", "deploy"):
+        for step_name, step in _step_map(job_id).items():
+            if "run" in step:
+                assert "${{" not in str(step["run"]), (
+                    f"helm-deploy.yml {job_id}.{step_name} must pass context/inputs via env"
+                )
 
-    assert_contains(setup_doctl_if, "steps.authorize.outputs.acquire-credentials == 'true'", "doctl step must require authorize credential approval")
-    assert_contains(setup_doctl_if, "steps.authorize.outputs.mode == 'deploy'", "doctl step must check authorize mode")
-    assert_contains(setup_helm_if, "steps.authorize.outputs.mode == 'deploy'", "setup-helm must check authorize mode")
-    assert_contains(deploy_if, "steps.authorize.outputs.mode == 'deploy'", "deploy step must check authorize mode")
-    assert_contains(post_if, "steps.authorize.outputs.mode == 'deploy'", "post-deploy step must require deploy mode")
-    assert_contains(post_if, "steps.authorize.outputs.allow-post-deploy == 'true'", "post-deploy step must require allow-post-deploy")
+    deploy_steps = _step_map("deploy")
+    setup_doctl_step = deploy_steps["Setup doctl + kubeconfig"]
+    setup_helm_step = deploy_steps["Setup Helm + repos"]
+    assert str(setup_doctl_step["uses"]).endswith("@v2"), "v2 workflow must use @v2 setup-doctl"
+    assert str(setup_helm_step["uses"]).endswith("@v2"), "v2 workflow must use @v2 setup-helm"
+
+    setup_doctl_if = str(setup_doctl_step.get("if", ""))
+    setup_helm_if = str(setup_helm_step.get("if", ""))
+    deploy_if = str(deploy_steps["Deploy (or dry-run on PR)"].get("if", ""))
+    post_if = str(deploy_steps["Post-deploy kubectl commands"].get("if", ""))
+
+    assert_contains(setup_doctl_if, "steps.verify_auth.outputs.acquire-credentials == 'true'", "doctl step must require verified credential approval")
+    assert_contains(setup_doctl_if, "steps.verify_auth.outputs.mode == 'deploy'", "doctl step must check verified mode")
+    assert_contains(setup_helm_if, "steps.verify_auth.outputs.mode == 'deploy'", "setup-helm must check verified mode")
+    assert_contains(deploy_if, "steps.verify_auth.outputs.mode == 'deploy'", "deploy step must check verified mode")
+    assert_contains(post_if, "steps.verify_auth.outputs.mode == 'deploy'", "post-deploy step must require deploy mode")
+    assert_contains(post_if, "steps.verify_auth.outputs.allow-post-deploy == 'true'", "post-deploy step must require allow-post-deploy")
 
 
 def test_default_branch_push_executes_real_deploy_and_post_deploy() -> None:
@@ -324,10 +432,12 @@ def test_default_branch_push_executes_real_deploy_and_post_deploy() -> None:
             extra_helm_args="--wait --cleanup-on-fail",
             post_deploy_kubectl="kubectl apply -f a.yaml\nkubectl rollout status deploy/my-app",
         )
-        assert result.authorized, f"expected default branch {branch} push to authorize: {result.authorize_stdout}"
+        assert result.authorized and result.verify_returncode == 0
         assert result.outputs["mode"] == "deploy"
+        assert result.outputs["manual-deploy"] == "false"
         assert result.outputs["acquire-credentials"] == "true"
         assert result.outputs["allow-post-deploy"] == "true"
+        assert result.outputs["environment"] == ""
         assert result.deploy_returncode == 0
         assert result.post_deploy_returncode == 0
 
@@ -338,7 +448,7 @@ def test_default_branch_push_executes_real_deploy_and_post_deploy() -> None:
             ["doctl", "kubernetes", "cluster", "kubeconfig", "save", "cluster-nonprod-0000"]
         ], f"expected doctl kubeconfig save, got {doctl_cmds}"
         assert len(helm_cmds) == 1
-        assert "--dry-run" not in helm_cmds[0], f"real deploy must not pass --dry-run: {helm_cmds[0]}"
+        assert "--dry-run" not in helm_cmds[0]
         assert "--version" in helm_cmds[0] and "1.2.3" in helm_cmds[0]
         assert "--cleanup-on-fail" in helm_cmds[0]
         assert kubectl_cmds == [
@@ -355,11 +465,14 @@ def test_same_repo_pull_request_runs_dry_run_and_skips_post_deploy() -> None:
         repository="nandohdc/sample-app",
         head_repo="nandohdc/sample-app",
         head_fork="false",
+        allow_manual_deploy="true",
+        environment_input="production",
         post_deploy_kubectl="kubectl apply -f dangerous.yaml",
     )
-    assert result.authorized, f"expected same-repo PR dry-run to authorize: {result.authorize_stdout}"
+    assert result.authorized and result.verify_returncode == 0
     assert result.outputs["mode"] == "dry-run"
-    assert result.outputs["acquire-credentials"] == "true"
+    assert result.outputs["manual-deploy"] == "false"
+    assert result.outputs["environment"] == ""
     assert result.outputs["allow-post-deploy"] == "false"
     assert result.deploy_returncode == 0
     assert result.post_deploy_returncode is None
@@ -367,19 +480,60 @@ def test_same_repo_pull_request_runs_dry_run_and_skips_post_deploy() -> None:
     helm_cmds = [cmd for cmd in result.commands if cmd[0] == "helm"]
     kubectl_cmds = [cmd for cmd in result.commands if cmd[0] == "kubectl"]
     assert len(helm_cmds) == 1
-    assert "--dry-run" in helm_cmds[0] and "--debug" in helm_cmds[0], f"PR must pass --dry-run --debug: {helm_cmds[0]}"
-    assert kubectl_cmds == [], f"PR dry-run must never run post-deploy kubectl: {kubectl_cmds}"
+    assert "--dry-run" in helm_cmds[0] and "--debug" in helm_cmds[0]
+    assert kubectl_cmds == []
 
 
-def test_unauthorized_events_and_refs_fail_before_credentials_or_mutations() -> None:
+def test_protected_manual_dispatch_contract_pending_rejected_and_approved() -> None:
+    # Pending or rejected environment approval halts before deploy job acquires credentials or runs Helm/kubectl.
+    pending = _simulate_helm_workflow(
+        event_name="workflow_dispatch",
+        ref="refs/heads/main",
+        default_branch="main",
+        allow_manual_deploy="true",
+        environment_input="nonprod-manual-deploy",
+        environment_approved=False,
+        post_deploy_kubectl="kubectl rollout status deploy/my-app",
+    )
+    assert pending.authorized
+    assert pending.outputs["mode"] == "deploy"
+    assert pending.outputs["manual-deploy"] == "true"
+    assert pending.outputs["environment"] == "nonprod-manual-deploy"
+    assert pending.commands == [], f"pending/rejected approval must execute zero commands: {pending.commands}"
+
+    # Approved default-branch manual dispatch executes real deploy and post-deploy under the same guards.
+    approved = _simulate_helm_workflow(
+        event_name="workflow_dispatch",
+        ref="refs/heads/main",
+        default_branch="main",
+        allow_manual_deploy="true",
+        environment_input="nonprod-manual-deploy",
+        environment_approved=True,
+        post_deploy_kubectl="kubectl rollout status deploy/my-app",
+    )
+    assert approved.authorized and approved.verify_returncode == 0
+    assert approved.outputs["mode"] == "deploy"
+    assert approved.outputs["manual-deploy"] == "true"
+    assert approved.outputs["environment"] == "nonprod-manual-deploy"
+    assert approved.deploy_returncode == 0
+    assert approved.post_deploy_returncode == 0
+    assert [c[0] for c in approved.commands] == ["doctl", "helm", "kubectl"]
+    assert "--dry-run" not in approved.commands[1]
+    assert approved.commands[2] == ["kubectl", "rollout", "status", "deploy/my-app"]
+
+
+def test_unauthorized_events_and_manual_misconfigurations_fail_before_credentials() -> None:
     blocked_cases = [
         ("feature push", {"event_name": "push", "ref": "refs/heads/feat/unsafe", "default_branch": "main"}),
         ("release branch push", {"event_name": "push", "ref": "refs/heads/release/v1", "default_branch": "main"}),
         ("tag push", {"event_name": "push", "ref": "refs/tags/v2.0.0", "default_branch": "main"}),
         ("empty default branch", {"event_name": "push", "ref": "refs/heads/main", "default_branch": ""}),
-        ("multiline default branch", {"event_name": "push", "ref": "refs/heads/main", "default_branch": "main\nextra"}),
-        ("default branch manual dispatch", {"event_name": "workflow_dispatch", "ref": "refs/heads/main", "default_branch": "main"}),
-        ("feature branch manual dispatch", {"event_name": "workflow_dispatch", "ref": "refs/heads/feat/manual", "default_branch": "main"}),
+        ("multiline environment", {"event_name": "workflow_dispatch", "ref": "refs/heads/main", "default_branch": "main", "allow_manual_deploy": "true", "environment_input": "prod\nother"}),
+        ("whitespace environment", {"event_name": "workflow_dispatch", "ref": "refs/heads/main", "default_branch": "main", "allow_manual_deploy": "true", "environment_input": "   "}),
+        ("unopted manual dispatch (no env)", {"event_name": "workflow_dispatch", "ref": "refs/heads/main", "default_branch": "main", "allow_manual_deploy": "false", "environment_input": ""}),
+        ("unopted manual dispatch (with env)", {"event_name": "workflow_dispatch", "ref": "refs/heads/main", "default_branch": "main", "allow_manual_deploy": "false", "environment_input": "production"}),
+        ("opted-in manual dispatch missing env", {"event_name": "workflow_dispatch", "ref": "refs/heads/main", "default_branch": "main", "allow_manual_deploy": "true", "environment_input": ""}),
+        ("feature branch manual dispatch (opted-in with env)", {"event_name": "workflow_dispatch", "ref": "refs/heads/feat/manual", "default_branch": "main", "allow_manual_deploy": "true", "environment_input": "production"}),
         (
             "fork PR (fork=true)",
             {
@@ -413,7 +567,7 @@ def test_unauthorized_events_and_refs_fail_before_credentials_or_mutations() -> 
                 "head_fork": "",
             },
         ),
-        ("pull_request_target", {"event_name": "pull_request_target", "ref": "refs/heads/main", "default_branch": "main"}),
+        ("pull_request_target (even opted-in)", {"event_name": "pull_request_target", "ref": "refs/heads/main", "default_branch": "main", "allow_manual_deploy": "true", "environment_input": "production"}),
         ("schedule", {"event_name": "schedule", "ref": "refs/heads/main", "default_branch": "main"}),
     ]
 
@@ -424,16 +578,18 @@ def test_unauthorized_events_and_refs_fail_before_credentials_or_mutations() -> 
         assert result.commands == [], f"{label} executed external commands despite rejection: {result.commands}"
 
 
-def test_step_scripts_fail_closed_when_invoked_without_deploy_authorization() -> None:
-    steps = _load_deploy_steps()
-    deploy_run = str(steps["Deploy (or dry-run on PR)"]["run"])
-    post_run = str(steps["Post-deploy kubectl commands"]["run"])
+def test_step_scripts_fail_closed_when_tampered_or_bypassed() -> None:
+    deploy_steps = _step_map("deploy")
+    verify_run = str(deploy_steps["Verify deployment authorization"]["run"])
+    deploy_run = str(deploy_steps["Deploy (or dry-run on PR)"]["run"])
+    post_run = str(deploy_steps["Post-deploy kubectl commands"]["run"])
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
         bin_dir = tmp_path / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
         log_file = tmp_path / "commands.log"
+        gh_out = tmp_path / "verify_out.txt"
         for tool in ("helm", "kubectl"):
             _write_stub_binary(bin_dir, tool, log_file)
 
@@ -441,6 +597,7 @@ def test_step_scripts_fail_closed_when_invoked_without_deploy_authorization() ->
         base_env.update(
             {
                 "PATH": f"{bin_dir}{os.pathsep}{base_env.get('PATH', '')}",
+                "GITHUB_OUTPUT": str(gh_out),
                 "HELM_RELEASE_NAME": "my-app",
                 "HELM_CHART": "./chart",
                 "HELM_NAMESPACE": "my-app",
@@ -451,6 +608,17 @@ def test_step_scripts_fail_closed_when_invoked_without_deploy_authorization() ->
                 "POST_DEPLOY_KUBECTL": "kubectl apply -f bypass.yaml",
             }
         )
+
+        # verify_auth must reject tampered handoff states.
+        bad_verify_cases = [
+            {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_FULL": "refs/heads/main", "DEFAULT_BRANCH": "main", "ALLOW_MANUAL_DEPLOY": "false", "INPUT_ENVIRONMENT": "prod", "AUTHORIZED_MODE": "deploy", "AUTHORIZED_MANUAL_DEPLOY": "true", "AUTHORIZED_ACQUIRE_CREDENTIALS": "true", "AUTHORIZED_ALLOW_POST_DEPLOY": "true", "AUTHORIZED_ENVIRONMENT": "prod"},
+            {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_FULL": "refs/heads/main", "DEFAULT_BRANCH": "main", "ALLOW_MANUAL_DEPLOY": "true", "INPUT_ENVIRONMENT": "prod", "AUTHORIZED_MODE": "deploy", "AUTHORIZED_MANUAL_DEPLOY": "true", "AUTHORIZED_ACQUIRE_CREDENTIALS": "true", "AUTHORIZED_ALLOW_POST_DEPLOY": "true", "AUTHORIZED_ENVIRONMENT": ""},
+            {"GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF_FULL": "refs/heads/main", "DEFAULT_BRANCH": "main", "ALLOW_MANUAL_DEPLOY": "true", "INPUT_ENVIRONMENT": "prod", "AUTHORIZED_MODE": "deploy", "AUTHORIZED_MANUAL_DEPLOY": "true", "AUTHORIZED_ACQUIRE_CREDENTIALS": "true", "AUTHORIZED_ALLOW_POST_DEPLOY": "true", "AUTHORIZED_ENVIRONMENT": "staging"},
+            {"GITHUB_EVENT_NAME": "pull_request_target", "GITHUB_REF_FULL": "refs/heads/main", "DEFAULT_BRANCH": "main", "ALLOW_MANUAL_DEPLOY": "true", "INPUT_ENVIRONMENT": "prod", "AUTHORIZED_MODE": "deploy", "AUTHORIZED_MANUAL_DEPLOY": "true", "AUTHORIZED_ACQUIRE_CREDENTIALS": "true", "AUTHORIZED_ALLOW_POST_DEPLOY": "true", "AUTHORIZED_ENVIRONMENT": "prod"},
+        ]
+        for case in bad_verify_cases:
+            proc = subprocess.run(["bash", "-c", verify_run], env=dict(base_env, **case), capture_output=True, text=True, check=False)
+            assert proc.returncode != 0, f"verify_auth accepted tampered state: {case}"
 
         for bad_mode in ("", "rejected"):
             env = dict(base_env, HELM_DEPLOY_MODE=bad_mode, HELM_ALLOW_POST_DEPLOY="true")
@@ -465,8 +633,77 @@ def test_step_scripts_fail_closed_when_invoked_without_deploy_authorization() ->
         assert _read_command_log(log_file) == [], "unauthorized direct step calls must not invoke helm or kubectl"
 
 
+def test_consumer_environment_protection_contract() -> None:
+    repo = "nandohdc/sample-consumer"
+
+    # 1. Missing environment -> unprovisioned
+    client_missing = FakeEnvironmentClient()
+    res = verify_protected_environment(client_missing, repository=repo, environment="prod")
+    assert not res.verified and res.status == "unprovisioned" and res.reason == "environment_not_found"
+
+    # 2. Named environment with no reviewers -> unprotected
+    client_unprotected = FakeEnvironmentClient(
+        environments={f"{repo}:prod": {"name": "prod", "protection_rules": [], "deployment_branch_policy": {"protected_branches": True, "custom_branch_policies": False}}}
+    )
+    res = verify_protected_environment(client_unprotected, repository=repo, environment="prod")
+    assert not res.verified and res.status == "unprotected" and res.reason == "missing_required_reviewers"
+
+    # 3. Reviewers present, but unrestricted branches (All branches / null deployment_branch_policy) -> unprotected
+    client_all_branches = FakeEnvironmentClient(
+        environments={
+            f"{repo}:prod": {
+                "name": "prod",
+                "protection_rules": [{"type": "required_reviewers", "reviewers": [{"id": 1}]}],
+                "deployment_branch_policy": None,
+            }
+        }
+    )
+    res = verify_protected_environment(client_all_branches, repository=repo, environment="prod")
+    assert not res.verified and res.status == "unprotected" and res.reason == "unrestricted_deployment_branches"
+
+    # 4. Reviewers present, custom branch policy has broad wildcard -> rejected
+    client_wildcard = FakeEnvironmentClient(
+        environments={
+            f"{repo}:prod": {
+                "name": "prod",
+                "protection_rules": [{"type": "required_reviewers", "reviewers": [{"id": 1}]}],
+                "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
+            }
+        },
+        branch_policies={f"{repo}:prod": [{"name": "*", "type": "branch"}]},
+    )
+    res = verify_protected_environment(client_wildcard, repository=repo, environment="prod")
+    assert not res.verified and res.status == "unprotected" and res.reason == "wildcard_branch_policy_not_allowed"
+
+    # 5. Reviewers present, custom branch policy pinned strictly to default branch -> verified
+    client_valid = FakeEnvironmentClient(
+        environments={
+            f"{repo}:prod": {
+                "name": "prod",
+                "protection_rules": [{"type": "required_reviewers", "reviewers": [{"id": 1}]}],
+                "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
+            }
+        },
+        branch_policies={f"{repo}:prod": [{"name": "main", "type": "branch"}]},
+    )
+    res = verify_protected_environment(client_valid, repository=repo, environment="prod")
+    assert res.verified and res.status == "protected" and res.reviewer_count == 1
+    assert res.allowed_patterns == ("main",)
+
+    # 6. Invalid empty/whitespace environment name raises clear error
+    try:
+        verify_protected_environment(client_valid, repository=repo, environment="  ")
+    except HelmEnvironmentError:
+        pass
+    else:
+        raise AssertionError("expected HelmEnvironmentError for whitespace environment")
+
+    assert HELM_ENVIRONMENT_SCRIPT.is_file()
+
+
 def test_docs_examples_and_lint_align_with_v2_helm_contract() -> None:
     example = read(HELM_EXAMPLE)
+    manual_example = read(HELM_MANUAL_EXAMPLE)
     readme = read(README)
     usage = read(USAGE)
     contributing = read(CONTRIBUTING)
@@ -476,16 +713,25 @@ def test_docs_examples_and_lint_align_with_v2_helm_contract() -> None:
     assert_contains(example, "nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2", "examples/helm-deploy.yml must use @v2")
     assert_not_contains(example, "\n  workflow_dispatch:", "examples/helm-deploy.yml must not enable unopted workflow_dispatch")
 
+    assert_contains(manual_example, "nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2", "examples/helm-deploy-manual.yml must use @v2")
+    assert_contains(manual_example, "allow-manual-deploy: true", "examples/helm-deploy-manual.yml must opt into manual deploy")
+    assert_contains(manual_example, "environment: production", "examples/helm-deploy-manual.yml must require a protected GitHub environment")
+    assert_contains(manual_example, "Caller workflow", "examples/helm-deploy-manual.yml must identify Caller workflow role")
+    assert_contains(manual_example, "Workflow consumer", "examples/helm-deploy-manual.yml must identify Workflow consumer role")
+
     assert_contains(readme, "helm-deploy.yml", "README must list helm-deploy.yml")
     assert_contains(readme, "@v2", "README must document @v2 for guarded Helm deployment")
     assert_contains(readme, "Use `@v1` for normal backward-compatible delivery.", "README must keep backward-compatible v1 guidance")
 
     assert_contains(usage, "nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2", "USAGE.md must show @v2 helm-deploy example")
+    assert_contains(usage, "allow-manual-deploy", "USAGE.md must document allow-manual-deploy")
+    assert_contains(usage, "environment", "USAGE.md must document protected environment input")
     assert_contains(usage, "Migrating `helm-deploy.yml` from `@v1` to `@v2`", "USAGE.md must include v1 -> v2 migration guidance")
-    assert_contains(usage, "workflow_dispatch", "USAGE.md must document manual dispatch restriction in v2")
+    assert_contains(usage, "workflow_dispatch", "USAGE.md must document manual dispatch policy in v2")
 
     assert_contains(contributing, "helm_deploy_workflow_contract_test.py", "CONTRIBUTING.md must list helm_deploy_workflow_contract_test.py")
     assert_contains(codex_context, "helm-deploy.yml@v2", ".codex/CONTEXT.md must document v2 Helm deploy policy")
+    assert_contains(codex_context, "allow-manual-deploy", ".codex/CONTEXT.md must document protected manual Helm deploy opt-in")
     assert_contains(lint, "python scripts/helm_deploy_workflow_contract_test.py", "lint.yml must run helm_deploy_workflow_contract_test.py")
 
 
@@ -493,8 +739,10 @@ def main() -> None:
     test_helm_deploy_workflow_structure_and_guards()
     test_default_branch_push_executes_real_deploy_and_post_deploy()
     test_same_repo_pull_request_runs_dry_run_and_skips_post_deploy()
-    test_unauthorized_events_and_refs_fail_before_credentials_or_mutations()
-    test_step_scripts_fail_closed_when_invoked_without_deploy_authorization()
+    test_protected_manual_dispatch_contract_pending_rejected_and_approved()
+    test_unauthorized_events_and_manual_misconfigurations_fail_before_credentials()
+    test_step_scripts_fail_closed_when_tampered_or_bypassed()
+    test_consumer_environment_protection_contract()
     test_docs_examples_and_lint_align_with_v2_helm_contract()
     print("helm_deploy_workflow_contract_test: ok")
 

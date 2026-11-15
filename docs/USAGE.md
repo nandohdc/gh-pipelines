@@ -535,11 +535,12 @@ jobs:
 
 Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster.
 
-In **`@v2`**, an authorization step evaluates `github.event_name`, `github.ref`, `github.event.repository.default_branch`, and pull-request fork metadata **before** obtaining cluster credentials or invoking Helm / `post-deploy-kubectl`:
+In **`@v2`**, an unprivileged `authorize` preflight job evaluates `github.event_name`, `github.ref`, `github.event.repository.default_branch`, pull-request fork metadata, `allow-manual-deploy`, and `environment` **before** the `deploy` job enters any GitHub Environment gate or obtains cluster credentials / invokes Helm / `post-deploy-kubectl`:
 
 - **Default-branch `push` (`refs/heads/<default_branch>`)**: Authorizes `mode=deploy`, configures cluster credentials, executes real `helm upgrade --install --atomic`, and runs `post-deploy-kubectl` commands if supplied (`deploy / <release-name>`).
-- **Same-repository `pull_request`**: Authorizes `mode=dry-run`, configures cluster credentials, executes `helm upgrade --install --dry-run --debug`, and skips `post-deploy-kubectl` (`deploy (dry-run) / <release-name>` — never reported as a real deployment). Fork pull requests (`fork == true` or mismatched head repository) are rejected before credential setup without broadening fork secret access.
-- **Blocked events and refs**: Feature-branch pushes, release/tag pushes, `workflow_dispatch` (disabled by default until explicit protected-environment opt-in lands), `pull_request_target`, and unsupported events fail closed before `actions/setup-doctl`, `helm`, or `post-deploy-kubectl` can run.
+- **Protected manual `workflow_dispatch` on the default branch**: Requires **both** `allow-manual-deploy: true` **and** a non-empty single-line `environment` name (`deploy` binds `environment: <name>`). GitHub Actions holds the `deploy` job in pending approval BEFORE acquiring `digitalocean-token` credentials, running `actions/setup-doctl`, executing Helm, or running `post-deploy-kubectl`. Consumer repository owners **must** configure repository protection rules on that GitHub Environment (required reviewers and default-branch deployment policy — verify with `python3 scripts/helm_environment.py verify --repo <owner>/<repo> --environment <name>`). Simply naming an unprotected or unprovisioned environment does not enforce approval.
+- **Same-repository `pull_request`**: Authorizes `mode=dry-run`, configures cluster credentials (without environment approval blocking PRs), executes `helm upgrade --install --dry-run --debug`, and skips `post-deploy-kubectl` (`deploy (dry-run) / <release-name>` — never reported as a real deployment). Fork pull requests (`fork == true` or mismatched head repository) are rejected before credential setup without broadening fork secret access.
+- **Blocked events and refs**: Feature-branch pushes, release/tag pushes, unopted or feature-branch `workflow_dispatch`, manual runs missing `environment`, `pull_request_target`, and unsupported events fail closed in `authorize` before `deploy`, `actions/setup-doctl`, `helm`, or `post-deploy-kubectl` can run.
 
 #### Inputs
 
@@ -556,6 +557,8 @@ In **`@v2`**, an authorization step evaluates `github.event_name`, `github.ref`,
 | `post-deploy-kubectl` | string | no | `""` | Post-deploy kubectl commands |
 | `extra-helm-repos` | string | no | `""` | Extra Helm repos (`name=url`) |
 | `runner-label` | string | no | `""` | Self-hosted runner label (empty uses `ubuntu-latest`) |
+| `allow-manual-deploy` | boolean | no | `false` | Explicitly allow default-branch `workflow_dispatch` real deploy when paired with a protected `environment` |
+| `environment` | string | no | `""` | Protected GitHub Environment name required for `workflow_dispatch` manual deployments |
 
 #### Secrets
 
@@ -563,7 +566,7 @@ In **`@v2`**, an authorization step evaluates `github.event_name`, `github.ref`,
 | --- | --- | --- |
 | `digitalocean-token` | **yes** | DigitalOcean PAT |
 
-#### Example (`@v2`)
+#### Example (`@v2` automatic + PR dry-run)
 
 ```yaml
 name: deploy
@@ -584,10 +587,44 @@ jobs:
       digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 ```
 
+#### Example (`@v2` protected manual dispatch)
+
+Provision GitHub Environment `production` with required reviewers and default-branch deployment policy first, then see [examples/helm-deploy-manual.yml](../examples/helm-deploy-manual.yml):
+
+```yaml
+name: deploy-manual
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
+    with:
+      release-name: my-app
+      chart: ./chart
+      namespace: my-app
+      values-file: values.yaml
+      allow-manual-deploy: true
+      environment: production
+    secrets:
+      digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+```
+
+#### Consumer Provisioning & Protection Contract (`workflow_dispatch`)
+
+1. Create the named GitHub Environment in the Consumer repository (**Settings -> Environments**).
+2. Enable **Required reviewers** (at least 1 reviewer).
+3. Restrict **Deployment branches and tags** to protected/selected branches covering only the default branch (for example `main`), not all branches or broad wildcards.
+4. Validate owner configuration using:
+
+```bash
+python3 scripts/helm_environment.py verify --repo <owner>/<repo> --environment <name> --default-branch main
+```
+
 #### Migrating `helm-deploy.yml` from `@v1` to `@v2`
 
 1. Keep existing callers on `@v1` until ready to adopt the default-branch enforcement contract.
-2. Check Caller workflow triggers: remove `workflow_dispatch`, non-default `push.branches`, and `pull_request_target` triggers from automatic `helm-deploy.yml@v2` Caller workflows (or split non-deploy checks cleanly), because `@v2` rejects those triggers before cluster authentication.
+2. Check Caller workflow triggers: remove `workflow_dispatch`, non-default `push.branches`, and `pull_request_target` triggers from automatic `helm-deploy.yml@v2` Caller workflows, or move manual runs into a dedicated Caller workflow that sets `allow-manual-deploy: true` with a protected `environment`.
 3. Verify pull-request Caller workflows run on same-repository `pull_request` events for `deploy (dry-run)` validation without exposing secrets to forks.
 4. Update `uses:` references in the Caller workflow together to `nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2`.
 

@@ -31,7 +31,7 @@ Sonar workflows are deprecated across the environment. Existing `v1` interfaces 
 | **Terraform CI** | `ci-terraform.yml` | Terraform fmt, validate, plan, and IaC audit |
 | **Docker Build** | `docker-build.yml` | Build + push images to GHCR* |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
-| **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (`@v2` guarded default-branch deploy; `@v1` legacy) |
+| **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (`@v2` guarded default-branch + protected manual deploy; `@v1` legacy) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
 | **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with preflighted scanner URL, quality gate enforcement, and optional pre-scan command hook |
 
