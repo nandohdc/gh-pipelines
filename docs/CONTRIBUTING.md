@@ -89,6 +89,11 @@ No release label means no release action (workflow exits successfully without ta
 
 #### Retries, partial failures, and recovery
 
+- Every release promotion checks exact-commit CI and consumer evidence before publishing tags (`Candidate promotion`):
+  - All 15 required `github-actions` jobs on `.github/workflows/lint.yml`, `.github/workflows/security-self-scan.yml`, and `.github/workflows/test-callers.yml` must match the exact candidate `head_sha` and complete with `conclusion == "success"` (`.github/workflows/release.yml` itself is excluded so the orchestrator never self-deadlocks).
+  - A passing `Candidate smoke` run in `nandohdc/gh-pipelines-hosted-acceptance` correlated to that exact `candidate_sha` is required (reused if already passing for the SHA, otherwise dispatched via `CANDIDATE_SMOKE_TOKEN` / `INTEGRATION_PAT`).
+  - Authorization and rejection reasons are logged explicitly as `Release promotion gate: candidate=<sha> status=authorized ci_checks=15 ... smoke_run_id=... smoke_url=...` or `Release promotion gate: candidate=<sha> status=blocked reason=...` (missing, queued/timed-out, failed, wrong-SHA, untrusted-app, wrong-workflow, or unprovisioned/failed consumer runs all leave the **Release intent** intact for retry without moving tags).
+  - Operators can retry a blocked candidate after fixing CI, re-running jobs, or restoring consumer availability by dispatching `.github/workflows/release.yml` (`workflow_dispatch`) on `main` / `release/v<N>`.
 - Every `release.yml` execution prints a `Release recovery summary:` line containing the **Release intent** (`PR#<n>@<sha>`), target `Major lineage`, chosen `Exact release tag`, completed effects (`exact_tag`, `floating_tag`, `github_release`), and retry outcome (`published:published`, `published:resumed`, or `noop:already_released`) without exposing credentials.
 - Each run reconciles pending first-parent commits in commit order from the branch lineage's latest reachable `Exact release tag` up to `GITHUB_SHA`, publishing one release per labeled merge without coalescing mixed `patch`, `minor`, or `major` intents.
 - Unlabeled merges create no release of their own and still reconcile any earlier pending labeled commits left behind by cancelled or replaced runs.
@@ -154,10 +159,11 @@ Candidate smoke orchestration (`scripts/candidate_smoke.py`) is tested against t
 python3 -m unittest -v scripts/candidate_smoke_test.py
 ```
 
-Maintainers with access to `nandohdc/gh-pipelines-hosted-acceptance` can execute hosted candidate rehearsals (and clean up the ephemeral smoke branch automatically) via:
+Maintainers with access to `nandohdc/gh-pipelines-hosted-acceptance` can execute hosted candidate rehearsals (and clean up the ephemeral smoke branch automatically) or verify the exact-commit promotion gate via:
 
 ```bash
 python3 scripts/candidate_smoke.py run --candidate-sha "$(git rev-parse HEAD)" --scenario ordinary --allow-gh-token
+python3 scripts/release.py verify-gate --sha "$(git rev-parse HEAD)" --allow-gh-token --no-dispatch-smoke
 ```
 
 ### Running Self-Tests

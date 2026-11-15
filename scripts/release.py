@@ -4,15 +4,42 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import re
 import subprocess
 import sys
+import tempfile
+import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
 
+REQUIRED_CI_CHECKS: Tuple[Tuple[str, str], ...] = (
+    (".github/workflows/lint.yml", "lint"),
+    (".github/workflows/security-self-scan.yml", "zizmor"),
+    (".github/workflows/security-self-scan.yml", "shellcheck"),
+    (".github/workflows/test-callers.yml", "test ci-go caller / lint"),
+    (".github/workflows/test-callers.yml", "test ci-go caller / test"),
+    (".github/workflows/test-callers.yml", "test ci-node caller / lint"),
+    (".github/workflows/test-callers.yml", "test ci-node caller / test"),
+    (".github/workflows/test-callers.yml", "test ci-python caller / lint"),
+    (".github/workflows/test-callers.yml", "test ci-python caller / test"),
+    (".github/workflows/test-callers.yml", "test ci-terraform caller / fmt"),
+    (".github/workflows/test-callers.yml", "test ci-terraform caller / validate"),
+    (".github/workflows/test-callers.yml", "test ci-terraform caller / plan"),
+    (".github/workflows/test-callers.yml", "test ci-with-sonar-go caller / ci / lint"),
+    (".github/workflows/test-callers.yml", "test ci-with-sonar-node caller / ci / lint"),
+    (".github/workflows/test-callers.yml", "test ci-with-sonar-python caller / ci / lint"),
+)
+_RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml"
+_DEFAULT_CONSUMER_REPO = "nandohdc/gh-pipelines-hosted-acceptance"
+_GITHUB_ACTIONS_APP_SLUG = "github-actions"
+_FAILING_CONCLUSIONS = frozenset(
+    {"failure", "cancelled", "timed_out", "action_required", "startup_failure", "stale"}
+)
+_DETAILS_RUN_ID_RE = re.compile(r"/actions/runs/([0-9]+)(?:/|$)")
 _SQUASH_PR_RE = re.compile(r"\(#([0-9]+)\)[ \t\r\f\v]*$")
 _MERGE_PR_RE = re.compile(r"^Merge\s+pull\s+request\s+#([0-9]+)")
 _SEMVER_TAG_RE = re.compile(r"^v([0-9]+)\.([0-9]+)\.([0-9]+)$")
@@ -33,7 +60,7 @@ class ReleaseError(RuntimeError):
 
 
 class GitHubClient(Protocol):
-    """Port for GitHub pull-request and release operations."""
+    """Port for GitHub pull-request, CI evidence, and release operations."""
 
     def find_merged_pr_for_commit(
         self, repository: str, sha: str, base_ref: str = "main"
@@ -49,6 +76,24 @@ class GitHubClient(Protocol):
     def create_release(self, tag: str, target_sha: str, title: str) -> None:
         ...
 
+    def list_workflow_runs_for_sha(
+        self, repository: str, sha: str
+    ) -> List[Dict[str, Any]]:
+        ...
+
+    def list_commit_check_runs(
+        self, repository: str, sha: str
+    ) -> List[Dict[str, Any]]:
+        ...
+
+    def ensure_candidate_smoke(
+        self,
+        candidate_sha: str,
+        *,
+        consumer_repo: str = _DEFAULT_CONSUMER_REPO,
+    ) -> Dict[str, Any]:
+        ...
+
 
 @dataclass(frozen=True)
 class ReleaseConfig:
@@ -62,6 +107,10 @@ class ReleaseConfig:
     workdir: Path = Path(".")
     remote: str = "origin"
     manifest_relpath: str = "actions/supply-chain-attest/action.yml"
+    ci_gate_timeout_seconds: int = 600
+    ci_gate_poll_seconds: int = 10
+    consumer_repo: str = _DEFAULT_CONSUMER_REPO
+    allow_dispatch_smoke: bool = True
 
 
 @dataclass(frozen=True)
@@ -110,11 +159,39 @@ def _run_checked(cmd: Sequence[str], workdir: Path) -> str:
     return result.stdout
 
 
+def _load_candidate_smoke() -> Any:
+    repo_root = str(Path(__file__).resolve().parent.parent)
+    if repo_root not in sys.path:
+        sys.path.insert(0, repo_root)
+    from scripts import candidate_smoke
+
+    return candidate_smoke
+
+
+def _smoke_outcome_to_dict(outcome: Any) -> Dict[str, Any]:
+    return {
+        "status": outcome.status,
+        "reason": outcome.reason,
+        "candidate_sha": outcome.candidate_sha,
+        "consumer_repo": outcome.consumer_repo,
+        "run_id": outcome.run_id,
+        "run_url": outcome.run_url,
+    }
+
+
 class GhCliGitHub:
     """Production GitHubClient adapter backed by the gh CLI."""
 
-    def __init__(self, workdir: Path = Path(".")) -> None:
+    def __init__(
+        self,
+        workdir: Path = Path("."),
+        *,
+        repository: str = "nandohdc/gh-pipelines",
+        allow_gh_token: bool = False,
+    ) -> None:
         self._workdir = workdir
+        self._repository = repository
+        self._allow_gh_token = allow_gh_token
 
     def _api_json(self, endpoint: str) -> Any:
         raw = _run_checked(["gh", "api", endpoint], self._workdir)
@@ -180,6 +257,95 @@ class GhCliGitHub:
             self._workdir,
         )
 
+    def _paginated_collection(
+        self, base_endpoint: str, key: str
+    ) -> List[Dict[str, Any]]:
+        items: List[Dict[str, Any]] = []
+        page = 1
+        while True:
+            endpoint = base_endpoint if page == 1 else f"{base_endpoint}&page={page}"
+            payload = self._api_json(endpoint)
+            if not isinstance(payload, dict):
+                raise ReleaseError(f"Expected JSON object from gh api {endpoint}")
+            batch = payload.get(key)
+            if not isinstance(batch, list):
+                raise ReleaseError(f"Expected '{key}' list from gh api {endpoint}")
+            dict_batch = [item for item in batch if isinstance(item, dict)]
+            items.extend(dict_batch)
+            total_count = payload.get("total_count")
+            if not dict_batch or len(batch) < 100:
+                break
+            if isinstance(total_count, int) and len(items) >= total_count:
+                break
+            page += 1
+        return items
+
+    def list_workflow_runs_for_sha(
+        self, repository: str, sha: str
+    ) -> List[Dict[str, Any]]:
+        return self._paginated_collection(
+            f"/repos/{repository}/actions/runs?head_sha={sha}&per_page=100",
+            "workflow_runs",
+        )
+
+    def list_commit_check_runs(
+        self, repository: str, sha: str
+    ) -> List[Dict[str, Any]]:
+        return self._paginated_collection(
+            f"/repos/{repository}/commits/{sha}/check-runs?per_page=100",
+            "check_runs",
+        )
+
+    def find_candidate_smoke(
+        self,
+        candidate_sha: str,
+        *,
+        consumer_repo: str = _DEFAULT_CONSUMER_REPO,
+    ) -> Optional[Dict[str, Any]]:
+        candidate_smoke = _load_candidate_smoke()
+        try:
+            token = candidate_smoke.resolve_consumer_token(
+                allow_gh_token=self._allow_gh_token
+            )
+            consumer_github = candidate_smoke.GhCliConsumerGitHub(token)
+            existing = candidate_smoke.find_verified_candidate_smoke_run(
+                consumer_github, consumer_repo, candidate_sha
+            )
+            return _smoke_outcome_to_dict(existing) if existing is not None else None
+        except candidate_smoke.CandidateSmokeError as exc:
+            raise ReleaseError(str(exc)) from exc
+
+    def ensure_candidate_smoke(
+        self,
+        candidate_sha: str,
+        *,
+        consumer_repo: str = _DEFAULT_CONSUMER_REPO,
+    ) -> Dict[str, Any]:
+        candidate_smoke = _load_candidate_smoke()
+        try:
+            token = candidate_smoke.resolve_consumer_token(
+                allow_gh_token=self._allow_gh_token
+            )
+            consumer_github = candidate_smoke.GhCliConsumerGitHub(token)
+            existing = candidate_smoke.find_verified_candidate_smoke_run(
+                consumer_github, consumer_repo, candidate_sha
+            )
+            if existing is not None:
+                return _smoke_outcome_to_dict(existing)
+            with _candidate_checkout_dir(self._workdir, candidate_sha) as candidate_dir:
+                smoke_config = candidate_smoke.CandidateSmokeConfig(
+                    candidate_sha=candidate_sha,
+                    source_repo=self._repository,
+                    consumer_repo=consumer_repo,
+                    candidate_dir=candidate_dir,
+                )
+                outcome = candidate_smoke.run_candidate_smoke(
+                    smoke_config, consumer_github
+                )
+                return _smoke_outcome_to_dict(outcome)
+        except candidate_smoke.CandidateSmokeError as exc:
+            raise ReleaseError(str(exc)) from exc
+
 
 def _resolve_pr_number(config: ReleaseConfig, github: GitHubClient) -> Optional[int]:
     subject = config.head_commit_message.split("\n", 1)[0]
@@ -198,6 +364,245 @@ def _resolve_release_type(labels: List[str]) -> Optional[str]:
         if label_name in label_set:
             return release_type
     return None
+
+
+@contextlib.contextmanager
+def _candidate_checkout_dir(workdir: Path, candidate_sha: str) -> Iterator[Path]:
+    head_result = _run_cmd(["git", "rev-parse", "HEAD"], workdir)
+    if head_result.returncode == 0 and head_result.stdout.strip().lower() == candidate_sha.lower():
+        yield workdir
+        return
+    exists_result = _run_cmd(["git", "cat-file", "-e", f"{candidate_sha}^{{commit}}"], workdir)
+    if exists_result.returncode != 0:
+        yield workdir
+        return
+    with tempfile.TemporaryDirectory(prefix="release-smoke-") as tmp_dir:
+        tmp_path = Path(tmp_dir)
+        add_result = _run_cmd(
+            ["git", "worktree", "add", "--detach", str(tmp_path), candidate_sha],
+            workdir,
+        )
+        if add_result.returncode != 0:
+            yield workdir
+            return
+        try:
+            yield tmp_path
+        finally:
+            _run_cmd(["git", "worktree", "remove", "--force", str(tmp_path)], workdir)
+
+
+def _extract_run_id_from_details_url(details_url: Any) -> Optional[int]:
+    if not isinstance(details_url, str):
+        return None
+    match = _DETAILS_RUN_ID_RE.search(details_url)
+    return int(match.group(1)) if match else None
+
+
+def _index_workflow_runs_by_sha(
+    workflow_runs: Sequence[Dict[str, Any]], expected_sha: str
+) -> Tuple[Dict[int, Tuple[str, int]], Dict[int, Tuple[str, int]]]:
+    runs_by_id: Dict[int, Tuple[str, int]] = {}
+    latest_by_suite: Dict[int, Tuple[str, int]] = {}
+    for run in workflow_runs:
+        if not isinstance(run, dict):
+            continue
+        head_sha = run.get("head_sha")
+        if isinstance(head_sha, str) and head_sha.strip() and head_sha.strip().lower() != expected_sha:
+            continue
+        run_id = run.get("id")
+        workflow_path = run.get("path")
+        if not isinstance(run_id, int) or not isinstance(workflow_path, str) or not workflow_path:
+            continue
+        runs_by_id[run_id] = (workflow_path, run_id)
+        suite_id = run.get("check_suite_id")
+        if isinstance(suite_id, int):
+            previous = latest_by_suite.get(suite_id)
+            if previous is None or run_id > previous[1]:
+                latest_by_suite[suite_id] = (workflow_path, run_id)
+    return runs_by_id, latest_by_suite
+
+
+def _collect_candidate_checks(
+    workflow_runs: Sequence[Dict[str, Any]],
+    check_runs: Sequence[Dict[str, Any]],
+    expected_sha: str,
+) -> Dict[Tuple[str, str], Dict[str, Any]]:
+    runs_by_id, latest_by_suite = _index_workflow_runs_by_sha(workflow_runs, expected_sha)
+    best_by_identity: Dict[Tuple[str, str], Tuple[Tuple[int, int], Dict[str, Any]]] = {}
+
+    for check in check_runs:
+        if not isinstance(check, dict):
+            continue
+        check_sha = check.get("head_sha")
+        if isinstance(check_sha, str) and check_sha.strip() and check_sha.strip().lower() != expected_sha:
+            continue
+        app = check.get("app")
+        if not isinstance(app, dict) or app.get("slug") != _GITHUB_ACTIONS_APP_SLUG:
+            continue
+        name = check.get("name")
+        if not isinstance(name, str) or not name:
+            continue
+
+        resolved: Optional[Tuple[str, int]] = None
+        details_run_id = _extract_run_id_from_details_url(check.get("details_url"))
+        if details_run_id is not None:
+            resolved = runs_by_id.get(details_run_id)
+        if resolved is None:
+            suite = check.get("check_suite")
+            suite_id = suite.get("id") if isinstance(suite, dict) else None
+            if isinstance(suite_id, int):
+                resolved = latest_by_suite.get(suite_id)
+        if resolved is None:
+            continue
+
+        workflow_path, resolved_run_id = resolved
+        if workflow_path == _RELEASE_WORKFLOW_PATH:
+            continue
+
+        identity = (workflow_path, name)
+        check_id = check.get("id")
+        rank = (resolved_run_id, check_id if isinstance(check_id, int) else 0)
+        previous = best_by_identity.get(identity)
+        if previous is None or rank > previous[0]:
+            best_by_identity[identity] = (rank, check)
+
+    return {identity: item[1] for identity, item in best_by_identity.items()}
+
+
+def _evaluate_ci_checks(
+    mapped_checks: Dict[Tuple[str, str], Dict[str, Any]],
+) -> Tuple[List[str], List[str], List[str]]:
+    required_set = set(REQUIRED_CI_CHECKS)
+    verified: List[str] = []
+    pending_or_missing: List[str] = []
+    terminal_failures: List[str] = []
+
+    for workflow_path, job_name in REQUIRED_CI_CHECKS:
+        check = mapped_checks.get((workflow_path, job_name))
+        label = f"{workflow_path}:{job_name}"
+        if check is None:
+            pending_or_missing.append(f"{label} (missing)")
+            continue
+        status = str(check.get("status") or "")
+        conclusion = str(check.get("conclusion") or "")
+        if status != "completed":
+            pending_or_missing.append(f"{label} (status={status or 'unknown'})")
+            continue
+        if conclusion != "success":
+            terminal_failures.append(f"{label} (conclusion={conclusion or 'unknown'})")
+            continue
+        verified.append(label)
+
+    for (workflow_path, job_name), check in mapped_checks.items():
+        if (workflow_path, job_name) in required_set:
+            continue
+        status = str(check.get("status") or "")
+        conclusion = str(check.get("conclusion") or "")
+        if status == "completed" and conclusion in _FAILING_CONCLUSIONS:
+            terminal_failures.append(
+                f"{workflow_path}:{job_name} (conclusion={conclusion})"
+            )
+
+    return verified, pending_or_missing, terminal_failures
+
+
+def _smoke_field(outcome: Any, field_name: str) -> Any:
+    if isinstance(outcome, dict):
+        return outcome.get(field_name)
+    return getattr(outcome, field_name, None)
+
+
+def _block_promotion(target_sha: str, reason: str) -> ReleaseError:
+    print(f"Release promotion gate: candidate={target_sha} status=blocked reason={reason}")
+    return ReleaseError(f"Release promotion blocked for {target_sha}: {reason}")
+
+
+def verify_promotion_gate(
+    config: ReleaseConfig,
+    github: GitHubClient,
+    target_sha: str,
+    *,
+    dispatch_smoke: Optional[bool] = None,
+) -> Dict[str, Any]:
+    """Verify exact-SHA required CI and consumer smoke evidence before release promotion."""
+    expected_sha = target_sha.strip().lower()
+    if not expected_sha:
+        raise ReleaseError("Cannot verify promotion gate without a candidate SHA.")
+
+    deadline = time.monotonic() + max(0.0, float(config.ci_gate_timeout_seconds))
+    verified_names: List[str] = []
+
+    while True:
+        workflow_runs = github.list_workflow_runs_for_sha(config.repository, target_sha)
+        check_runs = github.list_commit_check_runs(config.repository, target_sha)
+        mapped = _collect_candidate_checks(workflow_runs, check_runs, expected_sha)
+        verified_names, pending_or_missing, terminal_failures = _evaluate_ci_checks(mapped)
+
+        if terminal_failures:
+            raise _block_promotion(
+                target_sha,
+                f"required CI checks failed ({'; '.join(terminal_failures)})",
+            )
+        if not pending_or_missing:
+            break
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise _block_promotion(
+                target_sha,
+                f"required CI checks incomplete or missing ({'; '.join(pending_or_missing)})",
+            )
+        sleep_seconds = min(max(0.01, float(config.ci_gate_poll_seconds)), remaining)
+        time.sleep(sleep_seconds)
+
+    should_dispatch = (
+        config.allow_dispatch_smoke if dispatch_smoke is None else dispatch_smoke
+    )
+    try:
+        if not should_dispatch and hasattr(github, "find_candidate_smoke"):
+            smoke_outcome = getattr(github, "find_candidate_smoke")(
+                target_sha, consumer_repo=config.consumer_repo
+            )
+            if smoke_outcome is None:
+                raise _block_promotion(
+                    target_sha,
+                    f"missing verified candidate smoke run for {target_sha} in "
+                    f"{config.consumer_repo} (smoke dispatch disabled)",
+                )
+        else:
+            smoke_outcome = github.ensure_candidate_smoke(
+                target_sha,
+                consumer_repo=config.consumer_repo,
+            )
+    except ReleaseError as exc:
+        if "status=blocked" not in str(exc):
+            print(f"Release promotion gate: candidate={target_sha} status=blocked reason={exc}")
+        raise
+
+    smoke_status = _smoke_field(smoke_outcome, "status")
+    smoke_sha = str(_smoke_field(smoke_outcome, "candidate_sha") or "")
+    smoke_run_id = _smoke_field(smoke_outcome, "run_id")
+    smoke_url = _smoke_field(smoke_outcome, "run_url")
+    if smoke_outcome is None or smoke_status != "passed" or smoke_sha.lower() != expected_sha:
+        raise _block_promotion(
+            target_sha,
+            f"candidate smoke invalid for {target_sha} "
+            f"(status={smoke_status}, smoke_sha={smoke_sha or 'missing'})",
+        )
+
+    print(
+        f"Release promotion gate: candidate={target_sha} status=authorized "
+        f"ci_checks={len(verified_names)} consumer={config.consumer_repo} "
+        f"smoke_run_id={smoke_run_id} smoke_url={smoke_url}"
+    )
+    return {
+        "status": "authorized",
+        "candidate_sha": target_sha,
+        "ci_checks": tuple(verified_names),
+        "consumer_repo": config.consumer_repo,
+        "smoke_run_id": smoke_run_id,
+        "smoke_url": smoke_url,
+    }
 
 
 def _verify_attestation_guard(config: ReleaseConfig) -> None:
@@ -762,6 +1167,7 @@ def _run_single_commit_release(
             )
 
     _verify_attestation_guard(config)
+    verify_promotion_gate(config, github, config.sha)
     exact_effect, floating_effect_written = _publish_tags(config, plan)
     release_effect = _publish_github_release(github, plan.next_tag, config.sha)
     is_resumed = (
@@ -842,6 +1248,16 @@ def run_release(config: ReleaseConfig, github: GitHubClient) -> ReleaseOutcome:
     return replace(head_outcome, reconciled_outcomes=tuple(outcomes))
 
 
+def _int_env(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ReleaseError(f"{name} must be an integer, got {raw!r}.") from exc
+
+
 def _config_from_env() -> ReleaseConfig:
     repository = os.environ.get("GITHUB_REPOSITORY", "").strip()
     sha = os.environ.get("GITHUB_SHA", "").strip()
@@ -855,6 +1271,10 @@ def _config_from_env() -> ReleaseConfig:
     is_branch_creation = created_env == "true" or (
         bool(before_env) and set(before_env) == {"0"}
     )
+    consumer_repo = (
+        os.environ.get("RELEASE_CONSUMER_REPO", "").strip() or _DEFAULT_CONSUMER_REPO
+    )
+    dispatch_env = os.environ.get("RELEASE_DISPATCH_SMOKE", "true").strip().lower()
     return ReleaseConfig(
         repository=repository,
         sha=sha,
@@ -862,6 +1282,10 @@ def _config_from_env() -> ReleaseConfig:
         base_ref=base_ref,
         is_branch_creation=is_branch_creation,
         workdir=Path("."),
+        ci_gate_timeout_seconds=_int_env("RELEASE_CI_GATE_TIMEOUT_SECONDS", 600),
+        ci_gate_poll_seconds=_int_env("RELEASE_CI_GATE_POLL_SECONDS", 10),
+        consumer_repo=consumer_repo,
+        allow_dispatch_smoke=dispatch_env != "false",
     )
 
 
@@ -871,14 +1295,79 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("run", help="Resolve, guard, plan, and publish a release.")
 
+    verify_parser = subparsers.add_parser(
+        "verify-gate",
+        help="Verify exact-commit required CI and consumer smoke evidence.",
+    )
+    verify_parser.add_argument(
+        "--sha",
+        default=os.environ.get("GITHUB_SHA", "").strip(),
+        help="Candidate commit SHA to validate (defaults to GITHUB_SHA).",
+    )
+    verify_parser.add_argument(
+        "--repository",
+        default=os.environ.get("GITHUB_REPOSITORY", "").strip() or "nandohdc/gh-pipelines",
+        help="Source repository owner/name.",
+    )
+    verify_parser.add_argument(
+        "--consumer-repo",
+        default=os.environ.get("RELEASE_CONSUMER_REPO", "").strip() or _DEFAULT_CONSUMER_REPO,
+        help="Synthetic consumer repository owner/name.",
+    )
+    verify_parser.add_argument(
+        "--ci-timeout",
+        type=int,
+        default=_int_env("RELEASE_CI_GATE_TIMEOUT_SECONDS", 600),
+        help="Timeout in seconds while waiting for incomplete required CI checks.",
+    )
+    verify_parser.add_argument(
+        "--ci-poll-interval",
+        type=int,
+        default=_int_env("RELEASE_CI_GATE_POLL_SECONDS", 10),
+        help="Poll interval in seconds for required CI checks.",
+    )
+    verify_parser.add_argument(
+        "--allow-gh-token",
+        action="store_true",
+        help="Allow falling back to `gh auth token` when CANDIDATE_SMOKE_TOKEN is unset.",
+    )
+    verify_parser.add_argument(
+        "--no-dispatch-smoke",
+        action="store_true",
+        help="Require an existing passing consumer smoke run without dispatching a new one.",
+    )
+
     args = parser.parse_args(argv)
-    if args.command == "run":
-        try:
+    try:
+        if args.command == "run":
             config = _config_from_env()
-            run_release(config, GhCliGitHub(workdir=config.workdir))
-        except ReleaseError as exc:
-            print(f"::error::{exc}", file=sys.stderr)
-            return 1
+            run_release(
+                config,
+                GhCliGitHub(workdir=config.workdir, repository=config.repository),
+            )
+        elif args.command == "verify-gate":
+            if not args.sha:
+                raise ReleaseError("Either --sha or GITHUB_SHA is required for verify-gate.")
+            config = ReleaseConfig(
+                repository=args.repository,
+                sha=args.sha,
+                workdir=Path("."),
+                ci_gate_timeout_seconds=args.ci_timeout,
+                ci_gate_poll_seconds=args.ci_poll_interval,
+                consumer_repo=args.consumer_repo,
+                allow_dispatch_smoke=not args.no_dispatch_smoke,
+            )
+            github = GhCliGitHub(
+                workdir=config.workdir,
+                repository=config.repository,
+                allow_gh_token=args.allow_gh_token,
+            )
+            verify_promotion_gate(
+                config, github, args.sha, dispatch_smoke=not args.no_dispatch_smoke
+            )
+    except ReleaseError as exc:
+        print(f"::error::{exc}", file=sys.stderr)
+        return 1
     return 0
 
 

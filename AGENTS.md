@@ -68,8 +68,9 @@ Release tags are the delivery mechanism:
   - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main` and `patch`/`minor` on `release/v<N>` maintenance branches,
   - no-label skip path and `release/v<N>` initial branch-creation skip path,
   - merge-commit fallback PR detection path (`base.ref` matched to branch),
+  - exact-commit promotion gating (`verify_promotion_gate`, `REQUIRED_CI_CHECKS`, `app.slug == "github-actions"`, workflow-path correlation excluding `release.yml`, and exact-SHA `Candidate smoke` evidence / `verify-gate` CLI),
   - lineage isolation (interleaved old/new-major releases without cross-lineage floating-tag movement, and immutable exact-tag conflict rejection),
-  - release serialization and idempotent tag handling.
+  - release serialization, `workflow_dispatch` retry recovery, and idempotent tag handling.
 - If you changed `integration-smoke.yml`, verify:
   - `workflow_dispatch` succeeds on `main` (for example `consumer=all`),
   - controlled failing path opens a `drift`-labeled issue in a non-production repository,

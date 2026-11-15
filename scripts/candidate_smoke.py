@@ -19,9 +19,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
-import yaml
-
 DEFAULT_SOURCE_REPO = "nandohdc/gh-pipelines"
+
+
+def _require_yaml() -> Any:
+    try:
+        import yaml  # type: ignore[import-not-found]
+    except ImportError as exc:
+        raise CandidateSmokeError(
+            "PyYAML is required to stage candidate smoke workflows/actions (pip install PyYAML)."
+        ) from exc
+    return yaml
 DEFAULT_CONSUMER_REPO = "nandohdc/gh-pipelines-hosted-acceptance"
 CANDIDATE_SMOKE_WORKFLOW = "candidate-smoke.yml"
 
@@ -268,6 +276,7 @@ def _stage_composite_actions(
         shutil.rmtree(dst_actions_dir)
     shutil.copytree(candidate_actions_dir, dst_actions_dir)
 
+    yaml = _require_yaml()
     for action_yml in sorted(dst_actions_dir.glob("*/action.yml")):
         action_name = action_yml.parent.name
         data = yaml.safe_load(action_yml.read_text(encoding="utf-8"))
@@ -520,6 +529,7 @@ def _build_candidate_smoke_workflow(
         "permissions": {"contents": "read"},
         "jobs": jobs,
     }
+    yaml = _require_yaml()
     return yaml.safe_dump(doc, sort_keys=False, default_flow_style=False)
 
 
@@ -563,6 +573,7 @@ def build_baseline_candidate_smoke_workflow() -> str:
             }
         },
     }
+    yaml = _require_yaml()
     return yaml.safe_dump(doc, sort_keys=False, default_flow_style=False)
 
 

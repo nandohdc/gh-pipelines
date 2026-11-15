@@ -74,18 +74,20 @@
   - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-{go,node,python}.yml`, and `ci-terraform.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python,terraform}`
 - Internal release automation workflow:
-  - `.github/workflows/release.yml` triggers on `push` to `main` and `release/v[0-9]+` maintenance branches, and delegates execution to `scripts/release.py` (behavior-tested by `scripts/release_test.py`)
+  - `.github/workflows/release.yml` triggers on `push` to `main` and `release/v[0-9]+` maintenance branches plus `workflow_dispatch` retry recovery, with least-privilege `actions: read`, `checks: read`, `contents: write`, and `pull-requests: read` permissions, delegating execution to `scripts/release.py` (behavior-tested by `scripts/release_test.py`)
   - resolves release labels from the merged PR associated with `GITHUB_SHA`
   - derives semver bump from labels `release:patch|release:minor|release:major` within isolated Major lineages (`ADR-0001`)
   - no-ops when no release label exists on the associated merged PR
   - serializes executions via `concurrency` (`release-${{ github.ref_name }}`)
   - reconciles first-parent commits in commit order from the branch lineage's latest reachable Exact release tag (resuming an incomplete anchor if needed) so rapid bursts, cancelled queued runs, and trailing unlabeled merges never drop or overtake earlier labeled merges, halting visibly on any blocked commit
+  - gates each candidate commit through `verify_promotion_gate` (`REQUIRED_CI_CHECKS` 15 exact-`head_sha` `github-actions` jobs across `lint.yml`, `security-self-scan.yml`, and `test-callers.yml` excluding `release.yml`, plus correlated `Candidate smoke` evidence in `nandohdc/gh-pipelines-hosted-acceptance`), logging `Release promotion gate: candidate=... status=authorized|blocked ...` and providing `scripts/release.py verify-gate`
   - preserves each commit's chosen Exact release tag across retries and partial failures (`exact_tag` -> `floating_tag` -> `github_release`), treats completed retries as no-ops, refuses backward floating-tag movement on stale retries, and fails visibly on conflicting immutable tags or release target SHAs
   - creates immutable `vX.Y.Z`, updates the matching `v<N>` Floating major tag forward-only within lineage `N`, and creates GitHub release notes
 - Internal workflow security self-scan:
   - `.github/workflows/security-self-scan.yml`
+  - triggers on `push` to `main` / `release/v[0-9]+`, `pull_request`, weekly schedule, and `workflow_dispatch`
   - runs `zizmor` high-severity gate plus `actionlint -shellcheck=shellcheck` checks
-  - produces required status-check contexts `zizmor` and `shellcheck` on pull requests
+  - produces required status-check contexts `zizmor` and `shellcheck` on pull requests and push candidates
 - Node clean-runner package-manager contract (`actions/setup-node/action.yml`, `.github/workflows/ci-node.yml`):
   - initializes Node without cache first, enables `corepack enable` with `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` for `pnpm`/`yarn`, and only then configures dependency cache so clean runners without preinstalled `pnpm`/`yarn` succeed
   - behavior-guarded by `scripts/node_setup_workflow_contract_test.py` and hosted fixtures `tests/fixtures/{node,node-pnpm,node-yarn}` in `test-callers.yml`
