@@ -36,3 +36,35 @@ _Avoid_: consumer
 **Integration smoke**:
 A parse-and-lint drift probe for Canary consumer repositories; it does not execute a consumer pipeline.
 _Avoid_: end-to-end consumer test
+
+**Major lineage**:
+A compatibility line of releases sharing the same SemVer major number (for example `v1` or `v2`), isolated from breaking changes in other majors.
+_Avoid_: version stream, release track
+
+**Floating major tag**:
+A mutable `v<N>` tag that advances only for compatible `patch` and `minor` releases within Major lineage `N`.
+_Avoid_: moving tag, major alias
+
+**Exact release tag**:
+An immutable `vX.Y.Z` tag pointing permanently to one release commit.
+_Avoid_: point tag, snapshot tag
+
+**Maintenance branch**:
+A `release/v<N>` branch rooted in an older Major lineage so compatible `patch` and `minor` releases can publish without inheriting newer-major commits from `main`.
+_Avoid_: hotfix branch, support branch
+
+**Release intent**:
+A merged pull request on `main` or a `Maintenance branch` carrying a `release:*` label that commits a specific target SHA to one deterministic `Exact release tag` within its target `Major lineage`.
+_Avoid_: release request, pending tag
+
+**Synthetic consumer repository**:
+A dedicated non-production `Consumer repository` (`nandohdc/gh-pipelines-hosted-acceptance`) owned by the maintainer to execute candidate workflows and composite actions on GitHub-hosted runners without production credentials.
+_Avoid_: test repo, mock consumer, canary
+
+**Candidate smoke**:
+An executed run in the `Synthetic consumer repository` that exercises candidate reusable workflows and affected composite actions at an exact candidate commit SHA.
+_Avoid_: integration smoke, static drift check
+
+**Candidate promotion**:
+Advancing a `Major lineage`'s `Floating major tag` and publishing its `Exact release tag` and GitHub Release after exact-SHA required checks and `Candidate smoke` succeed.
+_Avoid_: tag push, release cut

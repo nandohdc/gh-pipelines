@@ -32,16 +32,7 @@ runs:
             ;;
         esac
 
-    - name: Set up Node ${{ inputs.node-version }} (with cache)
-      if: inputs.cache == 'true'
-      uses: actions/setup-node@v7
-      with:
-        node-version: ${{ inputs.node-version }}
-        cache: ${{ inputs.package-manager }}
-        cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
-
-    - name: Set up Node ${{ inputs.node-version }} (no cache)
-      if: inputs.cache != 'true'
+    - name: Set up Node ${{ inputs.node-version }}
       uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
@@ -49,6 +40,24 @@ runs:
     - name: Enable Corepack
       if: inputs.package-manager != 'npm'
       shell: bash
+      env:
+        PACKAGE_MANAGER: ${{ inputs.package-manager }}
+        CACHE_ENABLED: ${{ inputs.cache }}
       run: |
         set -euo pipefail
+        export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
+        echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
         corepack enable
+        if [ "${PACKAGE_MANAGER}" = "pnpm" ] && [ "${CACHE_ENABLED}" = "true" ]; then
+          (
+            cd "${GITHUB_WORKSPACE:-.}" && mkdir -p "$(pnpm store path --silent)"
+          )
+        fi
+
+    - name: Configure Node ${{ inputs.package-manager }} cache
+      if: inputs.cache == 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.package-manager }}
+        cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}

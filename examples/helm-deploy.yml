@@ -9,6 +9,12 @@
 # calls this workflow once per release.
 # =============================================================================
 
+# Note: helm-deploy.yml@v2 restricts automatic real deployments to pushes on the
+# repository default branch (`main` below), runs a dry-run on same-repository
+# pull_request events (`deploy (dry-run) / <release-name>`), and rejects fork
+# PRs, feature-branch pushes, pull_request_target, and unopted workflow_dispatch
+# before acquiring cluster credentials.
+
 name: deploy
 
 on:
@@ -20,11 +26,10 @@ on:
   pull_request:
     paths:
       - "apps/my-app/**"
-  workflow_dispatch:
 
 jobs:
   deploy:
-    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
     with:
       release-name: my-app
       chart: ./apps/my-app/chart

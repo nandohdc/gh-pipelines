@@ -8,6 +8,10 @@
 name: security-self-scan
 
 on:
+  push:
+    branches:
+      - main
+      - "release/v[0-9]+"
   pull_request:
   schedule:
     - cron: "0 6 * * 1"
@@ -21,7 +25,7 @@ permissions:
 jobs:
   zizmor:
     name: zizmor
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -29,7 +33,7 @@ jobs:
           persist-credentials: false
 
       - name: Run zizmor high-severity gate
-        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           advanced-security: false
           min-severity: high
@@ -42,7 +46,7 @@ jobs:
         id: upload_sarif
         if: always()
         continue-on-error: true
-        uses: zizmorcore/zizmor-action@cc914d7f3750a2d13d75c7f184a1060aa0e9d482 # v0.6.4
+        uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
         with:
           min-severity: high
           config: .zizmor.yml
@@ -59,7 +63,7 @@ jobs:
 
   shellcheck:
     name: shellcheck
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
