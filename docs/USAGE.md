@@ -107,6 +107,8 @@ Full CI pipeline for Go services including linting, testing, vulnerability scann
 | `golangci-lint-major` | string | no | `1` | golangci-lint major (`1` or `2`), selecting the corresponding Go module path |
 | `coverage-min` | string | no | `65.0` | Minimum coverage percentage |
 | `coverage-packages` | string | no | `""` | Space-separated packages for coverage (empty = all) |
+| `coverage-tags` | string | no | `""` | Optional Go build tags for coverage tests |
+| `coverage-instrument-packages` | string | no | `""` | Optional comma-separated `-coverpkg` patterns for coverage instrumentation |
 | `coverage-artifact-name` | string | no | `coverage` | Published coverage artifact name; make it unique for parallel Caller jobs |
 | `integration-coverage-artifact-name` | string | no | `integration-coverage` | Published integration coverage artifact name; make it unique for parallel Caller jobs |
 | `run-build` | boolean | no | `false` | Run `go build ./...` before unit tests |
@@ -127,6 +129,12 @@ Full CI pipeline for Go services including linting, testing, vulnerability scann
 3. **integration** — integration tests with Testcontainers (conditional)
 4. **vuln** — `govulncheck` scan
 5. **validate-manifests** — K8s dry-run + Prometheus promtool (conditional)
+
+Coverage defaults to the unit tests. To measure a combined suite, callers may
+set `coverage-tags: integration`, `coverage-instrument-packages: ./...` and
+`coverage-packages: ./...`; the combined result includes the tagged tests and
+must not be described as unit-only coverage. The separate integration job can
+remain enabled to report its result independently.
 
 #### Example
 

@@ -52,6 +52,16 @@ on:
         type: string
         required: false
         default: ""
+      coverage-tags:
+        description: "Optional Go build tags used during coverage measurement."
+        type: string
+        required: false
+        default: ""
+      coverage-instrument-packages:
+        description: "Optional comma-separated package patterns passed to go test -coverpkg."
+        type: string
+        required: false
+        default: ""
       coverage-artifact-name:
         description: "Artifact name used to publish coverage.out. Must be unique when multiple Caller jobs run in one workflow."
         type: string
@@ -235,12 +245,21 @@ jobs:
         env:
           COVERAGE_MIN: ${{ inputs.coverage-min }}
           COVERAGE_PKGS: ${{ inputs.coverage-packages }}
+          COVERAGE_TAGS: ${{ inputs.coverage-tags }}
+          COVERAGE_INSTRUMENT_PACKAGES: ${{ inputs.coverage-instrument-packages }}
         run: |
           set -euo pipefail
 
           pkgs="${COVERAGE_PKGS:-./...}"
           IFS=' ' read -r -a pkg_args <<< "${pkgs}"
-          go test -coverprofile=coverage.out "${pkg_args[@]}"
+          coverage_args=()
+          if [[ -n "${COVERAGE_TAGS}" ]]; then
+            coverage_args+=("-tags=${COVERAGE_TAGS}")
+          fi
+          if [[ -n "${COVERAGE_INSTRUMENT_PACKAGES}" ]]; then
+            coverage_args+=("-coverpkg=${COVERAGE_INSTRUMENT_PACKAGES}")
+          fi
+          go test -coverprofile=coverage.out "${coverage_args[@]}" "${pkg_args[@]}"
 
           coverage=$(go tool cover -func=coverage.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')
           echo "Coverage: ${coverage}%  Threshold: ${COVERAGE_MIN}%"
@@ -349,7 +368,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@latest
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
           mapfile -t packages < <(go list ./... | grep -v '/internal/testutil$')
           govulncheck "${packages[@]}"
 

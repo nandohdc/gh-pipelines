@@ -21,6 +21,8 @@ jobs:
       golangci-lint-major: "1"
       coverage-min: "65.0"
       coverage-packages: "./internal/canonical ./internal/config ./internal/db ./internal/health ./internal/httpx ./internal/observability ./internal/outbox ./internal/requestid"
+      # Optional combined coverage: set coverage-tags: integration and
+      # coverage-instrument-packages: ./..., then label the report combined.
       run-integration: true
       integration-tags: "integration"
       integration-packages: "./internal/..."

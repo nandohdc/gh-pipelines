@@ -57,11 +57,14 @@ def test_ci_go_supports_independent_module_contracts() -> None:
 def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
     workflow = read(CI_GO)
     zizmor_config = read(ZIZMOR_CONFIG)
+    coverage = step_block(workflow, "Coverage threshold")
     integration = step_block(workflow, "Integration tests")
     manifests = step_block(workflow, "Validate Kubernetes manifests")
     prometheus = step_block(workflow, "Validate Prometheus rules")
 
     for block, input_name, environment_name in (
+        (coverage, "coverage-tags", "COVERAGE_TAGS"),
+        (coverage, "coverage-instrument-packages", "COVERAGE_INSTRUMENT_PACKAGES"),
         (integration, "integration-tags", "INTEGRATION_TAGS"),
         (integration, "integration-packages", "INTEGRATION_PACKAGES"),
         (manifests, "k8s-manifests-dir", "K8S_MANIFESTS_DIR"),
@@ -73,6 +76,12 @@ def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
             f"{input_name} must enter the shell through {environment_name}",
         )
 
+    assert_contains(coverage, '"-tags=${COVERAGE_TAGS}"', "coverage tags must be one shell argument")
+    assert_contains(
+        coverage,
+        '"-coverpkg=${COVERAGE_INSTRUMENT_PACKAGES}"',
+        "coverage package patterns must be one shell argument",
+    )
     assert_contains(integration, '"-tags=${INTEGRATION_TAGS}"', "integration tags must be one shell argument")
     assert_contains(
         integration,
@@ -84,6 +93,7 @@ def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
     assert_contains(prometheus, 'rule_files=("${PROMETHEUS_RULES_DIR}"/*.yaml)', "rule paths must be quoted")
 
     for step_name, block in (
+        ("Coverage threshold", coverage),
         ("Integration tests", integration),
         ("Validate Kubernetes manifests", manifests),
         ("Validate Prometheus rules", prometheus),
@@ -93,6 +103,11 @@ def test_ci_go_routes_shell_inputs_through_environment_variables() -> None:
         run = block.split(run_marker, maxsplit=1)[1]
         assert_not_contains(run, "${{ inputs.", f"{step_name} must not interpolate workflow input into shell")
 
+    assert_contains(
+        workflow,
+        "golang.org/x/vuln/cmd/govulncheck@v1.9.0",
+        "Go vulnerability scanner must use a fixed version",
+    )
     assert_not_contains(
         zizmor_config,
         "- ci-go.yml:",
@@ -130,6 +145,10 @@ def test_internal_fixture_exercises_optional_build_and_artifact_name() -> None:
     assert_contains(callers, "coverage-artifact-name: fixture-go-coverage", "fixture must exercise custom artifact naming")
     assert_contains(callers, "run-build: true", "fixture must exercise optional build validation")
     for expected in (
+        "test-ci-go-combined-coverage:",
+        "coverage-tags: integration",
+        "coverage-instrument-packages: ./...",
+        "coverage-artifact-name: fixture-go-combined-coverage",
         "test-ci-go-multimodule-api:",
         "test-ci-go-multimodule-cli:",
         "test-ci-go-multimodule-handoff:",
