@@ -11,9 +11,11 @@ import tempfile
 import unittest
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from unittest import mock
 
 from scripts.release import (
     REQUIRED_CI_CHECKS,
+    GhCliGitHub,
     ReleaseConfig,
     ReleaseError,
     ReleaseOutcome,
@@ -2304,7 +2306,45 @@ class ReleaseCliProcessTest(unittest.TestCase):
                 text=True,
             )
             self.assertEqual(bad_proc.returncode, 1)
-            self.assertIn("status=blocked", bad_proc.stdout + bad_proc.stderr)
+            self.assertEqual(bad_proc.stdout.count("status=blocked"), 1, msg=bad_proc.stdout)
+
+    def test_gh_cli_ensure_candidate_smoke_forwards_token_to_run_candidate_smoke(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, work, sha = _create_repo_with_bare_remote(root)
+            from scripts import candidate_smoke
+
+            captured_kwargs: dict = {}
+
+            def fake_run_candidate_smoke(smoke_config, consumer_github, **kwargs):
+                captured_kwargs["smoke_config"] = smoke_config
+                captured_kwargs["consumer_github"] = consumer_github
+                captured_kwargs.update(kwargs)
+                return candidate_smoke.CandidateSmokeOutcome(
+                    status="passed",
+                    reason="verified",
+                    candidate_sha=sha,
+                    consumer_repo="nandohdc/gh-pipelines-hosted-acceptance",
+                    run_id=99001,
+                    run_url="https://github.com/nandohdc/gh-pipelines-hosted-acceptance/actions/runs/99001",
+                )
+
+            github = GhCliGitHub(workdir=work, repository="nandohdc/gh-pipelines")
+            with (
+                mock.patch.object(
+                    candidate_smoke, "resolve_consumer_token", return_value="pat-secret"
+                ),
+                mock.patch.object(
+                    candidate_smoke, "find_verified_candidate_smoke_run", return_value=None
+                ),
+                mock.patch.object(
+                    candidate_smoke, "run_candidate_smoke", side_effect=fake_run_candidate_smoke
+                ),
+            ):
+                outcome = github.ensure_candidate_smoke(sha)
+
+            self.assertEqual(outcome["status"], "passed")
+            self.assertEqual(captured_kwargs.get("token"), "pat-secret")
 
 
 if __name__ == "__main__":

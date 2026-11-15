@@ -340,7 +340,7 @@ class GhCliGitHub:
                     candidate_dir=candidate_dir,
                 )
                 outcome = candidate_smoke.run_candidate_smoke(
-                    smoke_config, consumer_github
+                    smoke_config, consumer_github, token=token
                 )
                 return _smoke_outcome_to_dict(outcome)
         except candidate_smoke.CandidateSmokeError as exc:
@@ -563,21 +563,21 @@ def verify_promotion_gate(
             smoke_outcome = getattr(github, "find_candidate_smoke")(
                 target_sha, consumer_repo=config.consumer_repo
             )
-            if smoke_outcome is None:
-                raise _block_promotion(
-                    target_sha,
-                    f"missing verified candidate smoke run for {target_sha} in "
-                    f"{config.consumer_repo} (smoke dispatch disabled)",
-                )
         else:
             smoke_outcome = github.ensure_candidate_smoke(
                 target_sha,
                 consumer_repo=config.consumer_repo,
             )
     except ReleaseError as exc:
-        if "status=blocked" not in str(exc):
-            print(f"Release promotion gate: candidate={target_sha} status=blocked reason={exc}")
+        print(f"Release promotion gate: candidate={target_sha} status=blocked reason={exc}")
         raise
+
+    if not should_dispatch and smoke_outcome is None:
+        raise _block_promotion(
+            target_sha,
+            f"missing verified candidate smoke run for {target_sha} in "
+            f"{config.consumer_repo} (smoke dispatch disabled)",
+        )
 
     smoke_status = _smoke_field(smoke_outcome, "status")
     smoke_sha = str(_smoke_field(smoke_outcome, "candidate_sha") or "")
