@@ -1,17 +1,19 @@
 # =============================================================================
 # release.yml — Internal automated semver release workflow
 # =============================================================================
-# Triggered on push to main; release type is resolved from labels on the
-# merged PR associated with the pushed commit.
+# Triggered on push to main or release/v<N> maintenance branches; release type
+# is resolved from labels on the merged PR associated with the pushed commit.
 #
 # Label convention:
-#   - release:patch -> bump patch (vX.Y.Z -> vX.Y.(Z+1))
-#   - release:minor -> bump minor (vX.Y.Z -> vX.(Y+1).0)
-#   - release:major -> bump major (vX.Y.Z -> v(X+1).0.0)
+#   - release:patch -> bump patch within target lineage (vM.Y.Z -> vM.Y.(Z+1))
+#   - release:minor -> bump minor within target lineage (vM.Y.Z -> vM.(Y+1).0)
+#   - release:major -> start new major lineage from main (v(M+1).0.0 + v(M+1)),
+#                      leaving prior floating major tags unchanged
 #   - no release label -> no release action (workflow exits successfully)
 #
 # Auth decision:
-#   - Option (a): uses GITHUB_TOKEN and assumes tag `v1` is not protected.
+#   - Option (a): uses GITHUB_TOKEN and assumes floating major tags (`v1`, `v2`, ...)
+#     are not protected against force-updates by the release workflow.
 # =============================================================================
 
 name: release
@@ -20,9 +22,10 @@ on:
   push:
     branches:
       - main
+      - "release/v[0-9]+"
 
 concurrency:
-  group: release-main
+  group: release-${{ github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -31,6 +34,7 @@ permissions:
 
 jobs:
   release:
+    if: github.ref == 'refs/heads/main' || !github.event.created
     runs-on: ubuntu-latest
     steps:
       - name: Checkout merge commit with tags
@@ -44,6 +48,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          GITHUB_EVENT_CREATED: ${{ github.event.created }}
         run: |
           set -euo pipefail
           python3 scripts/release.py run

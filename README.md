@@ -137,12 +137,14 @@ Do not add custom tunnel/auth headers to SonarSource actions; this contract assu
 
 ## Versioning
 
-This repository uses **tag-based versioning**:
+This repository uses **tag-based versioning** with independent compatible **Major lineages**:
 
-- `v1` — floating major tag (recommended for Consumer repositories)
-- `v1.0.0` — exact semantic version
+- `v1`, `v2`, … — **Floating major tags** (recommended for Consumer repositories, both Workflow consumers and Composite-action consumers). Each Floating major tag advances only for backward-compatible `patch` and `minor` releases within its own Major lineage.
+- `v1.0.0`, `v2.0.0`, … — immutable **Exact release tags** that never move once published.
 
-Use `@v1` for normal backward-compatible delivery. An exact release reference fixes the declared workflow reference, not every transitive dependency. Branch references and `@main` are validation references, not production onboarding references. The `@main` reference is reserved for the integration-smoke probe.
+Use `@v1` for normal backward-compatible delivery. Breaking changes (such as removing/renaming inputs or changing defaults that break existing callers, including upcoming deployment-policy tightening) are never released through `v1`; instead, they establish a new Major lineage (`v2.0.0` and floating `v2`) while leaving `v1` untouched so existing Consumer repositories can migrate deliberately. An exact release reference fixes the declared workflow reference, not every transitive dependency. Branch references and `@main` are validation references, not production onboarding references. The `@main` reference is reserved for the integration-smoke probe.
+
+To adopt a new major release when ready, update every Workflow invocation and direct composite action `uses:` reference in your Caller workflows together (for example `@v1` -> `@v2`) after reviewing the release notes and [Usage Guide](docs/USAGE.md#versioning-compatibility-and-major-migration).
 
 ## Repository Layout
 

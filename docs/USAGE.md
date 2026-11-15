@@ -14,6 +14,17 @@ necessarily a Workflow consumer.
 
 ---
 
+## Versioning, Compatibility, and Major Migration
+
+`gh-pipelines` publishes independent compatible **Major lineages** (`v1`, `v2`, …):
+
+- **Floating major tags (`@v1`, `@v2`, …)**: Recommended for both Workflow consumers and Composite-action consumers. Compatible `patch` and `minor` releases advance only the matching Floating major tag (`v1.x.y` -> `v1`, `v2.x.y` -> `v2`).
+- **Exact release tags (`@v1.10.0`, `@v2.0.0`, …)**: Immutable point tags that never move once published.
+- **Breaking changes & deliberate migration**: Breaking interface or default-behavior changes (for example, tightening default deployment restrictions) always start a new Major lineage (`v2.0.0` + `v2`) and never move `v1`. Existing consumers stay on `@v1` safely and opt into `@v2` by updating their `uses:` references after checking [CHANGELOG.md](../CHANGELOG.md) and the workflow inputs below.
+- **Consistent adoption**: When migrating a Caller workflow to a new major, update both reusable Workflow invocations (`.github/workflows/*.yml@v2`) and any direct Composite-action `uses:` (`actions/*@v2`) together. Internal composite-action references inside reusable workflows stay pinned to their own Major lineage.
+
+---
+
 ## Runner Selection
 
 Every reusable workflow exposes an optional `runner-label` input. Jobs resolve `runs-on` to the supplied label, or fall back to GitHub-hosted `ubuntu-latest` when the input is empty or omitted.

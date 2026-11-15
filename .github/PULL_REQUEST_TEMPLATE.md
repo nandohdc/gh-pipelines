@@ -13,9 +13,9 @@
 ## Release Label
 
 Apply exactly one label before merge when a release is needed:
-- `release:patch`
-- `release:minor`
-- `release:major`
+- `release:patch` (within target major lineage)
+- `release:minor` (within target major lineage)
+- `release:major` (starts a new major lineage on `main` without moving prior floating major tags; required for breaking default/interface changes)
 
 No release label means no release action.
 
