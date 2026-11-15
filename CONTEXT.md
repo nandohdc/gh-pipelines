@@ -36,3 +36,19 @@ _Avoid_: consumer
 **Integration smoke**:
 A parse-and-lint drift probe for Canary consumer repositories; it does not execute a consumer pipeline.
 _Avoid_: end-to-end consumer test
+
+**Major lineage**:
+A compatibility line of releases sharing the same SemVer major number (for example `v1` or `v2`), isolated from breaking changes in other majors.
+_Avoid_: version stream, release track
+
+**Floating major tag**:
+A mutable `v<N>` tag that advances only for compatible `patch` and `minor` releases within Major lineage `N`.
+_Avoid_: moving tag, major alias
+
+**Exact release tag**:
+An immutable `vX.Y.Z` tag pointing permanently to one release commit.
+_Avoid_: point tag, snapshot tag
+
+**Maintenance branch**:
+A `release/v<N>` branch rooted in an older Major lineage so compatible `patch` and `minor` releases can publish without inheriting newer-major commits from `main`.
+_Avoid_: hotfix branch, support branch

@@ -59,51 +59,62 @@ jobs:
 
 ## Modifying Existing Workflows
 
-- **Backward-compatible changes** (new optional inputs, bug fixes): merge directly.
-- **Breaking changes** (removing/renaming inputs, changing defaults that affect existing Caller workflows): bump the major version tag.
+- **Backward-compatible changes** (new optional inputs, bug fixes): merge to `main` (or the target `release/v<N>` Maintenance branch) with `release:patch` or `release:minor`.
+- **Breaking changes** (removing/renaming inputs, changing defaults that affect existing Caller workflows, or narrowing deployment policies): must start a new Major lineage via `release:major` on `main`. Breaking default changes cannot be released through the existing `v1` lineage.
 
 ## Versioning & Releases
 
 ### Tag Strategy
 
-We use **semantic versioning** with a floating major tag:
+We use **semantic versioning** with independent compatible **Major lineages** and per-lineage **Floating major tags**:
 
 | Tag | Purpose | Updated when |
 | --- | --- | --- |
-| `v1.0.0` | Exact release | Never moves |
-| `v1` | Floating major | Moves to latest `v1.x.x` |
+| `v1.10.0`, `v2.0.0` | Immutable **Exact release tag** | Never moves (conflicts fail release) |
+| `v1`, `v2`, … | **Floating major tag** | Moves only to latest `vM.x.y` within Major lineage `M` |
 
 ### Creating a Release
 
 Primary flow (automated):
 
 1. Add exactly one label to the PR before merge:
-   - `release:patch`
-   - `release:minor`
-   - `release:major`
-2. Merge the PR into `main`.
-3. `.github/workflows/release.yml` delegates to `scripts/release.py` to resolve merged-PR labels, enforce release guards, compute the next semver from existing `v*.*.*` tags, and publish tags and release notes.
-4. The workflow creates and pushes the new `vX.Y.Z` tag, force-moves `v1`, and publishes a GitHub Release with generated notes.
+   - `release:patch` — bumps patch within the branch's target Major lineage (`vM.Y.Z -> vM.Y.(Z+1)`) and moves `vM`
+   - `release:minor` — bumps minor within the branch's target Major lineage (`vM.Y.Z -> vM.(Y+1).0`) and moves `vM`
+   - `release:major` — allowed on `main` only; creates `v(M+1).0.0` and `v(M+1)` while leaving prior `vM` unchanged
+2. Merge the PR into `main` (or into a `release/v<N>` Maintenance branch for prior-major `patch`/`minor` fixes).
+3. `.github/workflows/release.yml` delegates to `scripts/release.py` to resolve merged-PR labels, enforce release guards, plan the target Major lineage, compute the next semver from `v<M>.*.*` tags in that lineage, and publish tags and release notes.
+4. The workflow creates and pushes the immutable `vX.Y.Z` tag, force-moves only the matching `v<M>` Floating major tag, and publishes a GitHub Release with generated notes.
 
 No release label means no release action (workflow exits successfully without tagging).
+
+#### Maintaining an existing major after a new major exists
+
+Once a new Major lineage (for example `v2.0.0`) exists on `main`, publish `patch` or `minor` fixes for an older Major lineage (such as `v1`) through a dedicated Maintenance branch `release/v<N>`:
+
+1. Create `release/v1` from the latest compatible `v1.x.y` commit (before `v2` breaking changes landed on `main`) and apply matching branch-protection rules and required status checks (`lint`, `test-callers`, `security-self-scan`) to `release/v1` on GitHub.
+   - Pushing the new `release/v1` branch (`github.event.created == true`) is automatically skipped by `release.yml` so the existing commit is not re-tagged.
+2. Author or cherry-pick the compatible fix in a PR targeting `release/v1`, add `release:patch` or `release:minor`, and merge once required checks pass (`release:major` is rejected on `release/v<N>` branches).
+3. `release.yml` resolves `target_major = 1` from `release/v1`, computes the next version strictly from `v1.*.*` tags, moves only `v1`, and leaves `v2` unchanged.
 
 #### Manual release (fallback)
 
 ```bash
-# Tag the commit
+# Replace <N> with the Exact release tag's own major number (never move v1 for v2.x.y)
 git tag vX.Y.Z
 git push origin vX.Y.Z
 
-# Move the floating major tag
-git tag -f v1 vX.Y.Z
-git push origin v1 --force
+# Move only the matching Floating major tag
+git tag -f v<N> vX.Y.Z
+git push origin v<N> --force
 ```
 
 ### When to Bump Major
 
 - Removing or renaming a workflow input/output
-- Changing a default value that would break existing Caller workflows
+- Changing a default value or policy that would break existing Caller workflows
 - Removing a workflow or action entirely
+
+When cutting a new Major lineage (for example `v2`), update internal composite-action references inside reusable workflows (`uses: nandohdc/gh-pipelines/actions/<name>@v<N>`) on `main` to `@v2` so `@v2` callers do not transitively execute `@v1` composite actions.
 
 ## Testing
 

@@ -41,7 +41,7 @@ uses: nandohdc/gh-pipelines/.github/workflows/ci-go.yml@my-branch
 Release tags are the delivery mechanism:
 
 - `git tag vX.Y.Z && git push origin vX.Y.Z`
-- `git tag -f v1 vX.Y.Z && git push origin v1 --force`
+- `git tag -f v<N> vX.Y.Z && git push origin v<N> --force` (matching the tag's own major `N`)
 
 ## Coding Style & Naming Conventions
 - Use YAML with 2-space indentation and clear step names.
@@ -64,10 +64,11 @@ Release tags are the delivery mechanism:
   - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
   - `UV_CACHE_DIR=/tmp/uv-cache UV_TOOL_DIR=/tmp/uv-tools UV_PYTHON_INSTALL_DIR=/tmp/uv-python uvx --from zizmor zizmor --min-severity=high --config .zizmor.yml .github/workflows/** actions/**/action.yml`
 - If you changed `dependabot-auto-merge.yml`, validate Dependabot-only behavior on `pull_request_target`, patch/minor auto-merge enablement, and major-update comment path.
-- If you changed `release.yml`, verify:
-  - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main`,
-  - no-label skip path,
-  - merge-commit fallback PR detection path,
+- If you changed `release.yml` or `scripts/release.py`, verify:
+  - merged-PR label handling (`release:patch|release:minor|release:major`) on push to `main` and `patch`/`minor` on `release/v<N>` maintenance branches,
+  - no-label skip path and `release/v<N>` initial branch-creation skip path,
+  - merge-commit fallback PR detection path (`base.ref` matched to branch),
+  - lineage isolation (interleaved old/new-major releases without cross-lineage floating-tag movement, and immutable exact-tag conflict rejection),
   - release serialization and idempotent tag handling.
 - If you changed `integration-smoke.yml`, verify:
   - `workflow_dispatch` succeeds on `main` (for example `consumer=all`),

@@ -12,9 +12,11 @@ on:
   pull_request:
     branches:
       - main
+      - "release/v[0-9]+"
   push:
     branches:
       - main
+      - "release/v[0-9]+"
 
 permissions:
   contents: read

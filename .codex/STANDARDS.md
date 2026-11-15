@@ -44,13 +44,13 @@ These standards are mandatory for Codex changes in this repository.
 ## Release workflow standards
 
 - Keep `.github/workflows/release.yml` internal (do not convert it to `workflow_call`).
-- Keep release trigger on `push` to `main` and derive release intent from labels on the merged PR associated with the pushed commit.
-- Preserve release label contract: `release:patch`, `release:minor`, and `release:major`.
+- Trigger releases on `push` to `main` and `release/v[0-9]+` maintenance branches (skipping initial branch-creation pushes), and derive release intent from labels on the merged PR associated with the pushed commit.
+- Preserve release label contract: `release:patch`, `release:minor`, and `release:major` (`release:major` allowed on `main` only).
 - Preserve successful no-op behavior when no release label is present on the associated merged PR.
 - Keep release workflow permissions minimal and scoped to required release operations (`contents: write` and `pull-requests: read`).
-- Keep release serialization (`concurrency`) enabled to prevent semver/tag races during rapid merge bursts.
-- Keep tag publication idempotent when the computed tag already exists at the same target SHA.
-- Continue creating immutable `vX.Y.Z` tags and moving `v1` only for backward-compatible changes.
+- Keep release serialization (`concurrency`) enabled per lineage branch (`release-${{ github.ref_name }}`) to prevent semver/tag races during rapid merge bursts.
+- Keep tag publication idempotent when the computed tag already exists at the same target SHA, and reject conflicting immutable `vX.Y.Z` targets without force-rewriting.
+- Create immutable `vX.Y.Z` tags and move only the matching `v<N>` floating major tag within its own major lineage; breaking changes establish `v(M+1).0.0` + `v(M+1)` without moving prior `v<M>`.
 
 ## Documentation standards
 

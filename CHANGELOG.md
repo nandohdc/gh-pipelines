@@ -23,6 +23,7 @@ Notes:
 
 ### Added
 
+- `docs/adr/0001-major-lineage-releases.md` and `CONTEXT.md`: documented the multi-lineage versioning model (`Major lineage`, `Floating major tag`, `Exact release tag`, `Maintenance branch`) and `release/v[0-9]+` maintenance route.
 - `scripts/contract_lib.py`: extracted shared helper functions (`read`, `assert_contains`, `assert_not_contains`, `assert_order`, `step_block`) from the three contract test scripts into a coverable module that produces SonarQube coverage data.
 - `scripts/contract_lib_test.py`: pytest unit tests for `contract_lib.py` with 100% coverage, wired into `lint.yml`.
 - `sonar-scan.yml`: new optional `pre-scan-command` input that runs an arbitrary shell command in `working-directory` before the scan step. Default empty (no-op).
@@ -33,6 +34,8 @@ Notes:
 
 ### Changed
 
+- `scripts/release.py`, `.github/workflows/release.yml`, `.github/workflows/lint.yml`, and `.github/workflows/test-callers.yml`: isolated release version calculation and floating major tag updates per compatible major lineage (`v0`, `v1`, `v2`, …), introduced explicit `ReleasePlan` tracking, rejected conflicting immutable `vX.Y.Z` tags without force-rewriting, and added `release/v[0-9]+` maintenance branch support (with branch-creation push guards and `release:major` rejection on maintenance branches).
+- `README.md`, `docs/USAGE.md`, `docs/CONTRIBUTING.md`, `.github/PULL_REQUEST_TEMPLATE.md`, `AGENTS.md`, and `.codex/STANDARDS.md`: updated versioning, compatibility, breaking-change, and consumer migration guidance for independent major lineages (`#182`).
 - Repository-owned automation and fixture callers select GitHub-hosted runners. The integration probe retains its `runner-label` dispatch input but ignores it.
 - `scripts/sonar_scan_workflow_contract_test.py`, `scripts/ci_with_sonar_workflow_contract_test.py`, `scripts/sonar_documentation_contract_test.py`: import helpers from `contract_lib` instead of defining them inline.
 - `docs/USAGE.md`, `examples/sonar-scan.yml`, `README.md`: document the new `pre-scan-command` input.

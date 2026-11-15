@@ -12,7 +12,7 @@ import unittest
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from scripts.release import ReleaseConfig, ReleaseError, ReleaseOutcome, run_release
+from scripts.release import ReleaseConfig, ReleaseError, ReleaseOutcome, ReleasePlan, run_release
 
 
 class FakeGitHub:
@@ -31,12 +31,14 @@ class FakeGitHub:
         self.releases: Dict[str, dict] = dict(existing_releases or {})
         self.fail_on = fail_on
 
-    def find_merged_pr_for_commit(self, repository: str, sha: str) -> Optional[int]:
+    def find_merged_pr_for_commit(
+        self, repository: str, sha: str, base_ref: str = "main"
+    ) -> Optional[int]:
         if self.fail_on == "find_merged_pr_for_commit":
             raise ReleaseError("simulated gh api commit pulls failure")
         for pr in self.commit_prs.get(sha, []):
             base = pr.get("base") or {}
-            if pr.get("merged_at") is not None and base.get("ref") == "main":
+            if pr.get("merged_at") is not None and base.get("ref") == base_ref:
                 return int(pr["number"])
         return None
 
@@ -191,7 +193,20 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
             self.assertEqual(outcome.latest_tag, "v0.0.0")
             self.assertEqual(outcome.next_tag, "v0.0.1")
             self.assertEqual(outcome.target_sha, sha)
-            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v1": sha})
+            self.assertEqual(
+                outcome.plan,
+                ReleasePlan(
+                    pr_number=101,
+                    release_type="patch",
+                    target_major=0,
+                    target_lineage="v0",
+                    latest_tag="v0.0.0",
+                    next_tag="v0.0.1",
+                    floating_tag="v0",
+                    target_sha=sha,
+                ),
+            )
+            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v0": sha})
             self.assertEqual(
                 github.releases,
                 {"v0.0.1": {"tag": "v0.0.1", "target_sha": sha, "title": "v0.0.1"}},
@@ -230,7 +245,8 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
             _git(work, "tag", "v1.2.3", first_sha)
-            _git(work, "push", "origin", "refs/tags/v1.2.3")
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.2.3", "refs/tags/v1")
 
             (work / "CHANGELOG.md").write_text("breaking\n", encoding="utf-8")
             _git(work, "add", "CHANGELOG.md")
@@ -261,8 +277,23 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
             self.assertEqual(outcome.pr_number, 90)
             self.assertEqual(outcome.release_type, "major")
             self.assertEqual(outcome.next_tag, "v2.0.0")
-            # Known pre-existing v1 move behavior preserved in #181; #182 handles lineage isolation.
-            self.assertEqual(_remote_tags(bare), {"v1.2.3": first_sha, "v2.0.0": second_sha, "v1": second_sha})
+            self.assertEqual(
+                outcome.plan,
+                ReleasePlan(
+                    pr_number=90,
+                    release_type="major",
+                    target_major=2,
+                    target_lineage="v2",
+                    latest_tag="v1.2.3",
+                    next_tag="v2.0.0",
+                    floating_tag="v2",
+                    target_sha=second_sha,
+                ),
+            )
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.2.3": first_sha, "v1": first_sha, "v2.0.0": second_sha, "v2": second_sha},
+            )
 
     def test_skips_release_creation_when_github_release_already_exists(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -286,7 +317,7 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
             self.assertEqual(outcome.status, "published")
             self.assertEqual(outcome.next_tag, "v0.0.3")
             self.assertEqual(github.releases["v0.0.3"]["title"], "existing")
-            self.assertEqual(_remote_tags(bare)["v1"], sha)
+            self.assertEqual(_remote_tags(bare)["v0"], sha)
 
     def test_fails_when_attestation_manifest_lacks_attest_sbom(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -332,7 +363,7 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
     def test_interrupts_deterministically_on_floating_tag_push_leaving_version_tag_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
-            _install_pre_receive_hook(bare, "refs/tags/v1")
+            _install_pre_receive_hook(bare, "refs/tags/v0")
             github = FakeGitHub(pr_labels={14: ["release:patch"]})
             with self.assertRaises(ReleaseError):
                 run_release(
@@ -361,7 +392,7 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
                     ),
                     github,
                 )
-            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v1": sha})
+            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v0": sha})
             self.assertEqual(github.releases, {})
 
     def test_propagates_github_api_errors_during_resolution_and_release_check(self) -> None:
@@ -402,7 +433,328 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
                     ),
                     github,
                 )
-            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v1": sha})
+            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v0": sha})
+            self.assertEqual(github.releases, {})
+
+    def test_major_release_from_v0_creates_v1_leaving_v0_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v0.0.1", first_sha)
+            _git(work, "tag", "v0", first_sha)
+            _git(work, "push", "origin", "refs/tags/v0.0.1", "refs/tags/v0")
+
+            (work / "breaking.txt").write_text("v1\n", encoding="utf-8")
+            _git(work, "add", "breaking.txt")
+            _git(work, "commit", "-m", "feat!: cut v1 (#20)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(pr_labels={20: ["release:major"]})
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=second_sha,
+                    head_commit_message="feat!: cut v1 (#20)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(outcome.status, "published")
+            self.assertEqual(outcome.next_tag, "v1.0.0")
+            self.assertIsNotNone(outcome.plan)
+            assert outcome.plan is not None
+            self.assertEqual(outcome.plan.target_lineage, "v1")
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v0.0.1": first_sha, "v0": first_sha, "v1.0.0": second_sha, "v1": second_sha},
+            )
+
+    def test_interleaved_old_and_new_major_releases_stay_isolated(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, v1_10_0_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "-a", "v1.10.0", "-m", "v1.10.0", v1_10_0_sha)
+            _git(work, "tag", "v1", v1_10_0_sha)
+            _git(work, "push", "origin", "refs/tags/v1.10.0", "refs/tags/v1")
+
+            # Create maintenance branch rooted at v1.10.0 before v2 lands on main.
+            _git(work, "checkout", "-b", "release/v1", v1_10_0_sha)
+            _git(work, "push", "-u", "origin", "release/v1")
+            _git(work, "checkout", "main")
+
+            # 1. Breaking change on main cuts v2.0.0 + v2 while leaving v1 at v1.10.0.
+            (work / "v2.txt").write_text("breaking\n", encoding="utf-8")
+            _git(work, "add", "v2.txt")
+            _git(work, "commit", "-m", "feat!: breaking v2 (#200)")
+            _git(work, "push", "origin", "main")
+            v2_0_0_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(
+                pr_labels={
+                    200: ["release:major"],
+                    201: ["release:patch"],
+                    202: ["release:minor"],
+                    203: ["release:minor"],
+                }
+            )
+            out_v2 = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=v2_0_0_sha,
+                    head_commit_message="feat!: breaking v2 (#200)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(out_v2.next_tag, "v2.0.0")
+            self.assertEqual(out_v2.plan.target_major, 2)  # type: ignore[union-attr]
+            self.assertEqual(_remote_tags(bare)["v1"], v1_10_0_sha)
+            self.assertEqual(_remote_tags(bare)["v2"], v2_0_0_sha)
+
+            # 2. Maintenance patch on release/v1 publishes v1.10.1 + moves v1, leaves v2 untouched.
+            _git(work, "checkout", "release/v1")
+            (work / "v1_fix.txt").write_text("fix 1\n", encoding="utf-8")
+            _git(work, "add", "v1_fix.txt")
+            _git(work, "commit", "-m", "fix: patch v1 (#201)")
+            _git(work, "push", "origin", "release/v1")
+            v1_10_1_sha = _git(work, "rev-parse", "HEAD")
+
+            out_v1_patch = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=v1_10_1_sha,
+                    head_commit_message="fix: patch v1 (#201)",
+                    base_ref="release/v1",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(out_v1_patch.latest_tag, "v1.10.0")
+            self.assertEqual(out_v1_patch.next_tag, "v1.10.1")
+            self.assertEqual(out_v1_patch.plan.target_lineage, "v1")  # type: ignore[union-attr]
+            self.assertEqual(_remote_tags(bare)["v1"], v1_10_1_sha)
+            self.assertEqual(_remote_tags(bare)["v2"], v2_0_0_sha)
+
+            # 3. Minor on main publishes v2.1.0 (from v2.0.0, not v1.10.1) + moves v2, leaves v1 at v1.10.1.
+            _git(work, "checkout", "main")
+            (work / "v2_feat.txt").write_text("feat\n", encoding="utf-8")
+            _git(work, "add", "v2_feat.txt")
+            _git(work, "commit", "-m", "feat: minor v2 (#202)")
+            _git(work, "push", "origin", "main")
+            v2_1_0_sha = _git(work, "rev-parse", "HEAD")
+
+            out_v2_minor = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=v2_1_0_sha,
+                    head_commit_message="feat: minor v2 (#202)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(out_v2_minor.latest_tag, "v2.0.0")
+            self.assertEqual(out_v2_minor.next_tag, "v2.1.0")
+            self.assertEqual(out_v2_minor.plan.target_lineage, "v2")  # type: ignore[union-attr]
+            self.assertEqual(_remote_tags(bare)["v1"], v1_10_1_sha)
+            self.assertEqual(_remote_tags(bare)["v2"], v2_1_0_sha)
+
+            # 4. Minor on release/v1 publishes v1.11.0 (from v1.10.1, not v2.1.0) + moves v1, leaves v2 at v2.1.0.
+            _git(work, "checkout", "release/v1")
+            (work / "v1_feat.txt").write_text("feat 1\n", encoding="utf-8")
+            _git(work, "add", "v1_feat.txt")
+            _git(work, "commit", "-m", "feat: minor v1 (#203)")
+            _git(work, "push", "origin", "release/v1")
+            v1_11_0_sha = _git(work, "rev-parse", "HEAD")
+
+            out_v1_minor = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=v1_11_0_sha,
+                    head_commit_message="feat: minor v1 (#203)",
+                    base_ref="release/v1",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(out_v1_minor.latest_tag, "v1.10.1")
+            self.assertEqual(out_v1_minor.next_tag, "v1.11.0")
+            self.assertEqual(out_v1_minor.plan.target_lineage, "v1")  # type: ignore[union-attr]
+
+            tags = _remote_tags(bare)
+            self.assertEqual(tags["v1.10.1"], v1_10_1_sha)
+            self.assertEqual(tags["v1.11.0"], v1_11_0_sha)
+            self.assertEqual(tags["v1"], v1_11_0_sha)
+            self.assertEqual(tags["v2.0.0"], v2_0_0_sha)
+            self.assertEqual(tags["v2.1.0"], v2_1_0_sha)
+            self.assertEqual(tags["v2"], v2_1_0_sha)
+            self.assertEqual(
+                set(github.releases.keys()),
+                {"v2.0.0", "v1.10.1", "v2.1.0", "v1.11.0"},
+            )
+
+    def test_main_uses_ancestry_to_stay_on_v1_when_v2_is_on_side_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, v1_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", v1_sha)
+            _git(work, "tag", "v1", v1_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            # Side branch tagged v2.0.0 that is not merged into main.
+            _git(work, "checkout", "-b", "v2-preview", v1_sha)
+            (work / "preview.txt").write_text("v2\n", encoding="utf-8")
+            _git(work, "add", "preview.txt")
+            _git(work, "commit", "-m", "feat!: preview v2")
+            v2_sha = _git(work, "rev-parse", "HEAD")
+            _git(work, "tag", "v2.0.0", v2_sha)
+            _git(work, "tag", "v2", v2_sha)
+            _git(work, "push", "origin", "refs/tags/v2.0.0", "refs/tags/v2")
+
+            _git(work, "checkout", "main")
+            (work / "main_fix.txt").write_text("fix\n", encoding="utf-8")
+            _git(work, "add", "main_fix.txt")
+            _git(work, "commit", "-m", "fix: compatible main fix (#204)")
+            _git(work, "push", "origin", "main")
+            main_fix_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(pr_labels={204: ["release:patch"]})
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=main_fix_sha,
+                    head_commit_message="fix: compatible main fix (#204)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(outcome.next_tag, "v1.0.1")
+            self.assertEqual(outcome.plan.target_major, 1)  # type: ignore[union-attr]
+            self.assertEqual(_remote_tags(bare)["v1"], main_fix_sha)
+            self.assertEqual(_remote_tags(bare)["v2"], v2_sha)
+
+    def test_skips_initial_branch_creation_on_maintenance_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.10.0", sha)
+            _git(work, "tag", "v1", sha)
+            _git(work, "push", "origin", "refs/tags/v1.10.0", "refs/tags/v1")
+
+            github = FakeGitHub(pr_labels={156: ["release:minor"]})
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=sha,
+                    head_commit_message="feat: earlier main release (#156)",
+                    base_ref="release/v1",
+                    is_branch_creation=True,
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(outcome.status, "skipped")
+            self.assertEqual(outcome.reason, "branch_created")
+            self.assertEqual(_remote_tags(bare), {"v1.10.0": sha, "v1": sha})
+            self.assertEqual(github.releases, {})
+
+    def test_rejects_invalid_maintenance_lineage_configurations(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "v2.txt").write_text("v2\n", encoding="utf-8")
+            _git(work, "add", "v2.txt")
+            _git(work, "commit", "-m", "feat!: v2 (#210)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+            _git(work, "tag", "v2.0.0", second_sha)
+            _git(work, "tag", "v2", second_sha)
+            _git(work, "push", "origin", "refs/tags/v2.0.0", "refs/tags/v2")
+
+            github = FakeGitHub(
+                pr_labels={
+                    211: ["release:major"],
+                    212: ["release:patch"],
+                    213: ["release:patch"],
+                }
+            )
+            for base_ref, sha, pr_num, msg in (
+                ("release/v1", first_sha, 211, "feat!: major on v1 (#211)"),
+                ("release/v1", second_sha, 212, "fix: v2 ancestor on v1 (#212)"),
+                ("release/v9", first_sha, 213, "fix: missing v9 lineage (#213)"),
+            ):
+                with self.subTest(base_ref=base_ref, pr_num=pr_num):
+                    with self.assertRaises(ReleaseError):
+                        run_release(
+                            ReleaseConfig(
+                                repository="nandohdc/gh-pipelines",
+                                sha=sha,
+                                head_commit_message=msg,
+                                base_ref=base_ref,
+                                workdir=work,
+                            ),
+                            github,
+                        )
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": first_sha, "v1": first_sha, "v2.0.0": second_sha, "v2": second_sha},
+            )
+            self.assertEqual(github.releases, {})
+
+    def test_rejects_conflicting_immutable_version_tag_without_force_rewriting(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "next.txt").write_text("next\n", encoding="utf-8")
+            _git(work, "add", "next.txt")
+            _git(work, "commit", "-m", "fix: next (#220)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            # Pre-existing local conflicting v1.0.1 tag must fail clearly rather than force-tag.
+            _git(work, "tag", "v1.0.1", first_sha)
+            github = FakeGitHub(pr_labels={220: ["release:patch"]})
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=second_sha,
+                        head_commit_message="fix: next (#220)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+            self.assertEqual(_remote_tags(bare), {"v1.0.0": first_sha, "v1": first_sha})
+            self.assertEqual(github.releases, {})
+
+    def test_fails_when_attestation_manifest_lacks_attest_sbom_for_major_release(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, first_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", first_sha)
+            _git(work, "tag", "v1", first_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            manifest = work / "actions" / "supply-chain-attest" / "action.yml"
+            manifest.write_text("inputs:\n  sign-image:\n    default: 'false'\n", encoding="utf-8")
+            _git(work, "add", str(manifest))
+            _git(work, "commit", "-m", "feat!: remove attest-sbom (#221)")
+            _git(work, "push", "origin", "main")
+            second_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(pr_labels={221: ["release:major"]})
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=second_sha,
+                        head_commit_message="feat!: remove attest-sbom (#221)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+            self.assertEqual(_remote_tags(bare), {"v1.0.0": first_sha, "v1": first_sha})
             self.assertEqual(github.releases, {})
 
 
@@ -479,6 +831,8 @@ def _run_release_cli(
     *,
     sha: str,
     message: str,
+    base_ref: Optional[str] = None,
+    event_created: Optional[str] = None,
 ) -> subprocess.CompletedProcess:
     script = Path(__file__).resolve()
     release_script = script.parent / "release.py"
@@ -489,6 +843,10 @@ def _run_release_cli(
     env["GITHUB_REPOSITORY"] = "nandohdc/gh-pipelines"
     env["GITHUB_SHA"] = sha
     env["HEAD_COMMIT_MESSAGE"] = message
+    if base_ref is not None:
+        env["GITHUB_REF_NAME"] = base_ref
+    if event_created is not None:
+        env["GITHUB_EVENT_CREATED"] = event_created
     return subprocess.run(
         [sys.executable, str(release_script), "run"],
         cwd=work,
@@ -523,7 +881,7 @@ class ReleaseCliProcessTest(unittest.TestCase):
                 message="fix: commit without pr suffix",
             )
             self.assertEqual(proc.returncode, 0, msg=proc.stderr)
-            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v1": sha})
+            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v0": sha})
             recorded = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 recorded["releases"],
@@ -551,7 +909,7 @@ class ReleaseCliProcessTest(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 1)
             self.assertIn("::error::", proc.stderr)
-            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v1": sha})
+            self.assertEqual(_remote_tags(bare), {"v0.0.1": sha, "v0": sha})
 
     def test_cli_exits_zero_without_writes_when_pr_has_no_release_label(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -573,6 +931,90 @@ class ReleaseCliProcessTest(unittest.TestCase):
             )
             self.assertEqual(proc.returncode, 0, msg=proc.stderr)
             self.assertEqual(_try_remote_tags(bare), {})
+            recorded = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(recorded["releases"], {})
+
+    def test_cli_publishes_maintenance_release_via_api_fallback_on_release_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bare, work, v1_sha = _create_repo_with_bare_remote(root)
+            _git(work, "tag", "v1.10.0", v1_sha)
+            _git(work, "tag", "v1", v1_sha)
+            _git(work, "push", "origin", "refs/tags/v1.10.0", "refs/tags/v1")
+
+            _git(work, "checkout", "-b", "release/v1", v1_sha)
+            (work / "fix.txt").write_text("hotfix\n", encoding="utf-8")
+            _git(work, "add", "fix.txt")
+            _git(work, "commit", "-m", "fix: backport patch")
+            _git(work, "push", "-u", "origin", "release/v1")
+            v1_fix_sha = _git(work, "rev-parse", "HEAD")
+
+            _git(work, "checkout", "main")
+            (work / "v2.txt").write_text("v2\n", encoding="utf-8")
+            _git(work, "add", "v2.txt")
+            _git(work, "commit", "-m", "feat!: breaking v2")
+            _git(work, "push", "origin", "main")
+            v2_sha = _git(work, "rev-parse", "HEAD")
+            _git(work, "tag", "v2.0.0", v2_sha)
+            _git(work, "tag", "v2", v2_sha)
+            _git(work, "push", "origin", "refs/tags/v2.0.0", "refs/tags/v2")
+
+            _git(work, "checkout", "release/v1")
+            bin_dir, state_path = _write_fake_gh(
+                root,
+                {
+                    "commit_prs": {
+                        v1_fix_sha: [
+                            {"number": 71, "merged_at": "2026-11-15T00:10:00Z", "base": {"ref": "main"}},
+                            {"number": 72, "merged_at": "2026-11-15T00:12:00Z", "base": {"ref": "release/v1"}},
+                        ]
+                    },
+                    "pr_labels": {"72": ["release:patch"]},
+                    "releases": {},
+                },
+            )
+            proc = _run_release_cli(
+                work,
+                bin_dir,
+                state_path,
+                sha=v1_fix_sha,
+                message="fix: backport patch",
+                base_ref="release/v1",
+                event_created="false",
+            )
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            tags = _remote_tags(bare)
+            self.assertEqual(tags["v1.10.1"], v1_fix_sha)
+            self.assertEqual(tags["v1"], v1_fix_sha)
+            self.assertEqual(tags["v2"], v2_sha)
+            recorded = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                recorded["releases"],
+                {"v1.10.1": {"tag": "v1.10.1", "target_sha": v1_fix_sha, "title": "v1.10.1"}},
+            )
+
+    def test_cli_skips_branch_creation_push_on_maintenance_branch(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            bare, work, sha = _create_repo_with_bare_remote(root)
+            _git(work, "tag", "v1.10.0", sha)
+            _git(work, "tag", "v1", sha)
+            _git(work, "push", "origin", "refs/tags/v1.10.0", "refs/tags/v1")
+            bin_dir, state_path = _write_fake_gh(
+                root,
+                {"pr_labels": {"156": ["release:minor"]}, "releases": {}},
+            )
+            proc = _run_release_cli(
+                work,
+                bin_dir,
+                state_path,
+                sha=sha,
+                message="feat: earlier release (#156)",
+                base_ref="release/v1",
+                event_created="true",
+            )
+            self.assertEqual(proc.returncode, 0, msg=proc.stderr)
+            self.assertEqual(_remote_tags(bare), {"v1.10.0": sha, "v1": sha})
             recorded = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(recorded["releases"], {})
 
