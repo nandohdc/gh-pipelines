@@ -32,6 +32,18 @@ jobs:
       run-build: true
       runner-label: ubuntu-latest
 
+  test-ci-go-combined-coverage:
+    name: test ci-go caller (combined coverage)
+    uses: ./.github/workflows/ci-go.yml
+    with:
+      working-directory: tests/fixtures/go
+      coverage-min: "60"
+      coverage-tags: integration
+      coverage-instrument-packages: ./...
+      coverage-artifact-name: fixture-go-combined-coverage
+      run-build: true
+      runner-label: ubuntu-latest
+
   test-ci-go-multimodule-api:
     name: test ci-go caller (multimodule api)
     uses: ./.github/workflows/ci-go.yml

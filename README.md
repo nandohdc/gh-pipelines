@@ -76,6 +76,10 @@ jobs:
       run-prometheus-validate: true
 ```
 
+Coverage uses unit tests by default. Callers may opt into combined unit and
+tagged integration coverage with `coverage-tags` and
+`coverage-instrument-packages`; see [Go CI inputs](docs/USAGE.md#ci-goyml--go-ci-pipeline).
+
 ### Using a composite action
 
 ```yaml
