@@ -2110,6 +2110,102 @@ class ReleaseCliProcessTest(unittest.TestCase):
                         )
                     self.assertEqual(_try_remote_tags(bare), {})
 
+    def test_promotion_gate_ignores_non_push_events_and_non_required_workflows(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+
+            # A passing schedule/pull_request run must not satisfy missing push CI evidence.
+            for bad_event in ("schedule", "pull_request"):
+                with self.subTest(disallowed_event=bad_event):
+                    wf_runs, ck_runs = _make_passing_ci_evidence("nandohdc/gh-pipelines", sha)
+                    for wf in wf_runs:
+                        if wf["path"] == ".github/workflows/security-self-scan.yml":
+                            wf["event"] = bad_event
+                    github = FakeGitHub(
+                        pr_labels={412: ["release:patch"]},
+                        commit_workflow_runs={sha: wf_runs},
+                        commit_check_runs={sha: ck_runs},
+                    )
+                    with self.assertRaises(ReleaseError) as ctx:
+                        run_release(
+                            ReleaseConfig(
+                                repository="nandohdc/gh-pipelines",
+                                sha=sha,
+                                head_commit_message="fix: schedule-only self-scan (#412)",
+                                workdir=work,
+                                ci_gate_timeout_seconds=0,
+                                ci_gate_poll_seconds=0,
+                            ),
+                            github,
+                        )
+                    self.assertIn("incomplete or missing", str(ctx.exception))
+                    self.assertEqual(_try_remote_tags(bare), {})
+
+            # Later cancelled/failed cron runs on head_sha (integration-smoke, scheduled self-scan)
+            # must NOT poison passing push runs for the candidate commit.
+            extra_wf = [
+                {
+                    "id": 98001,
+                    "path": ".github/workflows/integration-smoke.yml",
+                    "head_sha": sha,
+                    "status": "completed",
+                    "conclusion": "cancelled",
+                    "event": "schedule",
+                },
+                {
+                    "id": 98002,
+                    "path": ".github/workflows/security-self-scan.yml",
+                    "head_sha": sha,
+                    "status": "completed",
+                    "conclusion": "cancelled",
+                    "event": "schedule",
+                },
+            ]
+            extra_checks = [
+                {
+                    "id": 98101,
+                    "name": "parse ${{ matrix.id }}",
+                    "head_sha": sha,
+                    "status": "completed",
+                    "conclusion": "cancelled",
+                    "app": {"slug": "github-actions"},
+                    "details_url": "https://github.com/nandohdc/gh-pipelines/actions/runs/98001/job/1",
+                },
+                {
+                    "id": 98102,
+                    "name": "zizmor",
+                    "head_sha": sha,
+                    "status": "completed",
+                    "conclusion": "cancelled",
+                    "app": {"slug": "github-actions"},
+                    "details_url": "https://github.com/nandohdc/gh-pipelines/actions/runs/98002/job/2",
+                },
+            ]
+            wf_ok, ck_ok = _make_passing_ci_evidence(
+                "nandohdc/gh-pipelines",
+                sha,
+                extra_workflow_runs=extra_wf,
+                extra_check_runs=extra_checks,
+            )
+            github_ok = FakeGitHub(
+                pr_labels={413: ["release:patch"]},
+                commit_workflow_runs={sha: wf_ok},
+                commit_check_runs={sha: ck_ok},
+            )
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=sha,
+                    head_commit_message="fix: ignore schedule noise (#413)",
+                    workdir=work,
+                    ci_gate_timeout_seconds=0,
+                    ci_gate_poll_seconds=0,
+                ),
+                github_ok,
+            )
+            self.assertEqual(outcome.status, "published")
+            self.assertEqual(outcome.next_tag, "v0.0.1")
+
     def test_promotion_gate_excludes_own_unfinished_release_check_without_self_deadlock(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
