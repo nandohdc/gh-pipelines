@@ -287,3 +287,41 @@ jobs:
               yarn test
               ;;
           esac
+
+  # Exercises caller-composed Terraform pattern where caller-scoped env setup
+  # and ./actions/setup-terraform run in the same job (providerless fixture;
+  # validates env persistence across setup-terraform unlike workflow_call jobs).
+  test-setup-terraform-caller-composed:
+    name: test setup-terraform caller-composed
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/fixtures/terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Simulate caller-scoped authentication environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "TF_IN_AUTOMATION=true" >> "${GITHUB_ENV}"
+          echo "CALLER_AUTH_CONTEXT=synthetic-same-job-oidc" >> "${GITHUB_ENV}"
+
+      - name: Setup Terraform via composite action
+        uses: ./actions/setup-terraform
+        with:
+          terraform-version: "1.9.8"
+
+      - name: Verify caller auth context and run Terraform lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${CALLER_AUTH_CONTEXT:-}" != "synthetic-same-job-oidc" ]; then
+            echo "::error::Expected caller-scoped auth environment to stay in scope after setup-terraform."
+            exit 1
+          fi
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+          terraform plan -input=false -no-color
