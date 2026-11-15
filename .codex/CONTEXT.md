@@ -96,8 +96,8 @@
 - Internal integration drift workflow:
   - `.github/workflows/integration-smoke.yml`
   - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
-  - checks active canary consumer `nandohdc/financial-events-ingestion-api` by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
-  - opens a `drift`-labeled issue in this repository on failure; Sonar presence is not enforced
+  - checks active canary consumer `nandohdc/financial-events-ingestion-api` using `scripts/canary_probe.py` (YAML-aware active `uses:` inspection and `@main` rewrite ignoring comments/sample strings, plus `actionlint`; static lint does not establish remote workflow input compatibility, which requires executed smoke)
+  - opens a `drift`-labeled issue in this repository on failure; Sonar presence is not enforced (`enforce_sonar=False`; active Sonar invocations are still counted/rewritten and `.github/SONAR_EXEMPT` is honored under opt-in enforcement)
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, `sign-image`, and `attest-sbom` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance/attestation logic

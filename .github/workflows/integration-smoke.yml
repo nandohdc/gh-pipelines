@@ -66,6 +66,22 @@ jobs:
       matrix:
         include: ${{ fromJson(needs.select-consumers.outputs.matrix) }}
     steps:
+      - name: Checkout gh-pipelines
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install Canary probe dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet 'PyYAML==6.0.2'
+
       - name: Install actionlint
         shell: bash
         run: |
@@ -94,43 +110,11 @@ jobs:
           set -euo pipefail
           gh repo clone "${CONSUMER_REPOSITORY}" consumer -- --depth 1 --branch main
 
-      - name: Rewrite gh-pipelines refs to @main
+      - name: Rewrite active gh-pipelines refs to @main and inspect Sonar invocations
         shell: bash
         run: |
           set -euo pipefail
-          cd consumer
-
-          if [ ! -d ".github/workflows" ]; then
-            echo "::error::No .github/workflows directory found in Canary consumer repository."
-            exit 1
-          fi
-
-          mapfile -t workflow_files < <(find .github/workflows -maxdepth 1 -type f \( -name "*.yml" -o -name "*.yaml" \) | sort)
-          if ((${#workflow_files[@]} == 0)); then
-            echo "::error::No Caller workflow files found in Canary consumer repository."
-            exit 1
-          fi
-
-          find_pipeline_refs() {
-            local pattern='uses:[[:space:]]*nandohdc/gh-pipelines/.github/workflows/[^[:space:]]+'
-            if command -v rg >/dev/null 2>&1; then
-              rg -n --no-heading "${pattern}" .github/workflows || true
-            else
-              grep -REn "${pattern}" .github/workflows || true
-            fi
-          }
-
-          matches_before="$(find_pipeline_refs)"
-          matches_before_count=$(printf '%s\n' "${matches_before}" | sed '/^$/d' | wc -l | tr -d ' ')
-
-          for workflow in "${workflow_files[@]}"; do
-            perl -0pi -e 's~(uses:\s*nandohdc/gh-pipelines/\.github/workflows/[^\s@]+)(@[^\s]+)?~$1\@main~g' "${workflow}"
-          done
-
-          matches_after="$(find_pipeline_refs)"
-          matches_after_count=$(printf '%s\n' "${matches_after}" | sed '/^$/d' | wc -l | tr -d ' ')
-          echo "Rewrote ${matches_before_count} references to gh-pipelines @main in ${PWD}/.github/workflows."
-          echo "Remaining gh-pipelines references after rewrite: ${matches_after_count}"
+          python3 "${GITHUB_WORKSPACE}/scripts/canary_probe.py" --consumer-dir consumer --target-ref main
 
       - name: Lint rewritten Caller workflows
         shell: bash

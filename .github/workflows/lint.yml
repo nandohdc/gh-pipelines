@@ -61,6 +61,12 @@ jobs:
           set -euo pipefail
           python -m pytest scripts/release_test.py -q --cov=scripts.release --cov-report=term-missing
 
+      - name: Canary probe tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest scripts/canary_probe_test.py -q --cov=scripts.canary_probe --cov-report=term-missing
+
       - name: Install yamllint
         shell: bash
         run: |
