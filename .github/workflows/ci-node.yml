@@ -103,10 +103,18 @@ jobs:
       - name: Enable Corepack
         if: inputs.package-manager != 'npm'
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
+          export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
           echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
           corepack enable
+          if [ "${PACKAGE_MANAGER}" = "pnpm" ]; then
+            (
+              cd "${GITHUB_WORKSPACE:-.}" && mkdir -p "$(pnpm store path --silent)"
+            )
+          fi
 
       - name: Configure Node dependency cache
         uses: actions/setup-node@v7
@@ -195,10 +203,18 @@ jobs:
       - name: Enable Corepack
         if: inputs.package-manager != 'npm'
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
+          export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
           echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
           corepack enable
+          if [ "${PACKAGE_MANAGER}" = "pnpm" ]; then
+            (
+              cd "${GITHUB_WORKSPACE:-.}" && mkdir -p "$(pnpm store path --silent)"
+            )
+          fi
 
       - name: Configure Node dependency cache
         uses: actions/setup-node@v7
@@ -313,10 +329,18 @@ jobs:
       - name: Enable Corepack
         if: inputs.package-manager != 'npm'
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
+          export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
           echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
           corepack enable
+          if [ "${PACKAGE_MANAGER}" = "pnpm" ]; then
+            (
+              cd "${GITHUB_WORKSPACE:-.}" && mkdir -p "$(pnpm store path --silent)"
+            )
+          fi
 
       - name: Configure Node dependency cache
         uses: actions/setup-node@v7
