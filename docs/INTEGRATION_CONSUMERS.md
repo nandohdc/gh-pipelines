@@ -97,3 +97,32 @@ Do not add new Sonar required checks. For each existing Consumer repository, ver
 - Minimum scope: repository read access to canary repos.
 - Rotation cadence: at least every 90 days or immediately after a token exposure event.
 - For Workflow consumer Sonar integration, rotate each repository `DOPPLER_TOKEN` at least every 90 days.
+
+## Synthetic Consumer & Candidate Smoke
+
+Unlike `Integration smoke` (which only lints downstream Canary Caller workflows without executing them), **Candidate smoke** executes candidate reusable workflows and affected composite actions on GitHub-hosted `ubuntu-latest` runners inside the dedicated non-production **Synthetic consumer repository** (`nandohdc/gh-pipelines-hosted-acceptance`).
+
+### Execution & Dispatch Contract
+
+`scripts/candidate_smoke.py` provides the execution and result-verification interface:
+
+1. **Candidate isolation without moving production tags**: Before calling `.github/workflows/candidate-smoke.yml`, `scripts/candidate_smoke.py` creates an ephemeral `smoke/candidate-<sha12>-<request_id>` branch in `nandohdc/gh-pipelines-hosted-acceptance` containing:
+   - Fixtures under `tests/fixtures/{go,node,python,terraform,helm}`.
+   - Candidate composite actions copied from `actions/*`, with each composite action instrumented to record `<action>=<candidate_sha>` into `${RUNNER_TEMP}/gh-pipelines-candidate-actions.log`.
+   - Candidate reusable workflows (`candidate-ci-{go,node,python,terraform}.yml`) whose nested `actions/*` references are rewritten to `nandohdc/gh-pipelines-hosted-acceptance/actions/<name>@<smoke_branch>` so nested composite changes under test are exercised rather than production `@v1`/`@v2` tags.
+   - `.github/workflows/candidate-smoke.yml` (`workflow_dispatch` inputs: `candidate_sha`, `request_id`), exercising `candidate-ci-go.yml`, `candidate-ci-node.yml`, `candidate-ci-python.yml`, `candidate-ci-terraform.yml`, direct cross-repository `ci-go.yml@<candidate_sha>`, direct calls to `setup-go`, `setup-node`, `setup-python`, `setup-terraform`, `setup-helm`, and `docker-meta`, and a final `candidate-smoke-result / ${{ inputs.candidate_sha }}` job recording runner metadata and failing closed on any incomplete or non-passing upstream job.
+2. **Ephemeral branch cleanup**: The temporary `smoke/candidate-*` branch is deleted in a `finally` guard on both passing and failing runs.
+3. **Candidate-correlated result verification**: `verify_candidate_smoke_run` / `find_verified_candidate_smoke_run` requires `status == "completed"`, `conclusion == "success"`, all core `smoke-*` jobs green, and a passing `candidate-smoke-result / <candidate_sha>` job matching the exact requested `candidate_sha`. Runs for another SHA are rejected with `wrong_candidate_sha`.
+4. **Negative verification scenarios**: `scripts/candidate_smoke.py run --scenario ...` supports `ordinary`, `nonexistent-input` (verifying Caller workflow input errors fail closed), and `action-regression` (verifying nested/direct `actions/setup-go` failures fail closed).
+
+### Scoped Credentials & Provisioning Handoff
+
+- Preferred repository secret: `CANDIDATE_SMOKE_TOKEN` (fine-grained PAT scoped strictly to `nandohdc/gh-pipelines-hosted-acceptance` with `Contents: Read and write` and `Actions: Read and write`, zero access to production consumer repositories or production clusters). Falls back to `INTEGRATION_PAT` if configured with write/dispatch scope on `nandohdc/gh-pipelines-hosted-acceptance`.
+- Local maintainer verification can pass `--allow-gh-token` when authenticated via `gh auth login`.
+- If `CANDIDATE_SMOKE_TOKEN` / `INTEGRATION_PAT` is missing or lacks permission in CI, `scripts/candidate_smoke.py` exits non-zero with `status=unprovisioned` instead of reporting a passing smoke run.
+- Do **not** store production cloud, registry, or Sonar credentials in `nandohdc/gh-pipelines-hosted-acceptance`.
+
+### Extension Contract for Downstream Gates (`#186`–`#188`)
+
+- Release promotion (`#186`) consumes `find_verified_candidate_smoke_run` / `run_candidate_smoke` keyed on `candidate_sha` without introducing a second orchestration mechanism.
+- Guarded Helm policy rehearsals (`#187`–`#188`) reuse `nandohdc/gh-pipelines-hosted-acceptance` and its non-production fixture tree / workflow_dispatch contract rather than adding production clusters.

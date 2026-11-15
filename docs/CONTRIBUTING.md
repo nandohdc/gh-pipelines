@@ -148,6 +148,18 @@ If `pytest` is installed (as in `.github/workflows/lint.yml`), you can also run:
 python3 -m pytest scripts/release_test.py -q
 ```
 
+Candidate smoke orchestration (`scripts/candidate_smoke.py`) is tested against temporary bare Git remotes and fake GitHub API adapters via:
+
+```bash
+python3 -m unittest -v scripts/candidate_smoke_test.py
+```
+
+Maintainers with access to `nandohdc/gh-pipelines-hosted-acceptance` can execute hosted candidate rehearsals (and clean up the ephemeral smoke branch automatically) via:
+
+```bash
+python3 scripts/candidate_smoke.py run --candidate-sha "$(git rev-parse HEAD)" --scenario ordinary --allow-gh-token
+```
+
 ### Running Self-Tests
 
 Repository-owned jobs and local reusable-workflow callers select GitHub-hosted `ubuntu-latest`; `RUNNER_LABEL` is a downstream-only opt-in. Sonar workflows are deprecated and the bundle fixtures below retain existing required check contexts without executing Sonar.

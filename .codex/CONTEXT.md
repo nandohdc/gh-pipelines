@@ -98,6 +98,9 @@
   - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
   - checks active canary consumer `nandohdc/financial-events-ingestion-api` using `scripts/canary_probe.py` (YAML-aware active `uses:` inspection and `@main` rewrite ignoring comments/sample strings, plus `actionlint`; static lint does not establish remote workflow input compatibility, which requires executed smoke)
   - opens a `drift`-labeled issue in this repository on failure; Sonar presence is not enforced (`enforce_sonar=False`; active Sonar invocations are still counted/rewritten and `.github/SONAR_EXEMPT` is honored under opt-in enforcement)
+- Synthetic consumer candidate smoke (`#185`):
+  - `scripts/candidate_smoke.py` (tested by `scripts/candidate_smoke_test.py` in `lint.yml`) executes candidate reusable workflows and affected composite actions on GitHub-hosted `ubuntu-latest` inside `nandohdc/gh-pipelines-hosted-acceptance` using ephemeral `smoke/candidate-<sha12>-<request_id>` branches and correlated `candidate-smoke-result / <candidate_sha>` checks without moving production `@v1`/`@v2` tags
+  - supports `ordinary`, `nonexistent-input`, and `action-regression` scenarios plus fail-closed `unprovisioned` handling when `CANDIDATE_SMOKE_TOKEN` / `INTEGRATION_PAT` is unavailable
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, `sign-image`, and `attest-sbom` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance/attestation logic
