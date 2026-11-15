@@ -59,51 +59,78 @@ jobs:
 
 ## Modifying Existing Workflows
 
-- **Backward-compatible changes** (new optional inputs, bug fixes): merge directly.
-- **Breaking changes** (removing/renaming inputs, changing defaults that affect existing Caller workflows): bump the major version tag.
+- **Backward-compatible changes** (new optional inputs, bug fixes): merge to `main` (or the target `release/v<N>` Maintenance branch) with `release:patch` or `release:minor`.
+- **Breaking changes** (removing/renaming inputs, changing defaults that affect existing Caller workflows, or narrowing deployment policies): must start a new Major lineage via `release:major` on `main`. Breaking default changes cannot be released through the existing `v1` lineage.
 
 ## Versioning & Releases
 
 ### Tag Strategy
 
-We use **semantic versioning** with a floating major tag:
+We use **semantic versioning** with independent compatible **Major lineages** and per-lineage **Floating major tags**:
 
 | Tag | Purpose | Updated when |
 | --- | --- | --- |
-| `v1.0.0` | Exact release | Never moves |
-| `v1` | Floating major | Moves to latest `v1.x.x` |
+| `v1.10.0`, `v2.0.0` | Immutable **Exact release tag** | Never moves (conflicts fail release) |
+| `v1`, `v2`, … | **Floating major tag** | Moves only to latest `vM.x.y` within Major lineage `M` |
 
 ### Creating a Release
 
 Primary flow (automated):
 
 1. Add exactly one label to the PR before merge:
-   - `release:patch`
-   - `release:minor`
-   - `release:major`
-2. Merge the PR into `main`.
-3. `.github/workflows/release.yml` computes the next semver from existing `v*.*.*` tags.
-4. The workflow creates and pushes the new `vX.Y.Z` tag, force-moves `v1`, and publishes a GitHub Release with generated notes.
+   - `release:patch` — bumps patch within the branch's target Major lineage (`vM.Y.Z -> vM.Y.(Z+1)`) and moves `vM`
+   - `release:minor` — bumps minor within the branch's target Major lineage (`vM.Y.Z -> vM.(Y+1).0`) and moves `vM`
+   - `release:major` — allowed on `main` only; creates `v(M+1).0.0` and `v(M+1)` while leaving prior `vM` unchanged
+2. Merge the PR into `main` (or into a `release/v<N>` Maintenance branch for prior-major `patch`/`minor` fixes).
+3. `.github/workflows/release.yml` delegates to `scripts/release.py` to resolve merged-PR labels, enforce release guards, plan the target Major lineage, compute the next semver from `v<M>.*.*` tags in that lineage, and publish tags and release notes.
+4. The workflow creates and pushes the immutable `vX.Y.Z` tag, force-moves only the matching `v<M>` Floating major tag, and publishes a GitHub Release with generated notes.
 
 No release label means no release action (workflow exits successfully without tagging).
+
+#### Retries, partial failures, and recovery
+
+- Every release promotion checks exact-commit CI and consumer evidence before publishing tags (`Candidate promotion`):
+  - All 15 required `github-actions` jobs on `.github/workflows/lint.yml`, `.github/workflows/security-self-scan.yml`, and `.github/workflows/test-callers.yml` must match the exact candidate `head_sha` and complete with `conclusion == "success"` (`.github/workflows/release.yml` itself is excluded so the orchestrator never self-deadlocks).
+  - A passing `Candidate smoke` run in `nandohdc/gh-pipelines-hosted-acceptance` correlated to that exact `candidate_sha` is required (reused if already passing for the SHA, otherwise dispatched via `CANDIDATE_SMOKE_TOKEN` / `INTEGRATION_PAT`).
+  - Authorization and rejection reasons are logged explicitly as `Release promotion gate: candidate=<sha> status=authorized ci_checks=15 ... smoke_run_id=... smoke_url=...` or `Release promotion gate: candidate=<sha> status=blocked reason=...` (missing, queued/timed-out, failed, wrong-SHA, untrusted-app, wrong-workflow, or unprovisioned/failed consumer runs all leave the **Release intent** intact for retry without moving tags).
+  - Operators can retry a blocked candidate after fixing CI, re-running jobs, or restoring consumer availability by dispatching `.github/workflows/release.yml` (`workflow_dispatch`) on `main` / `release/v<N>`.
+- Every `release.yml` execution prints a `Release recovery summary:` line containing the **Release intent** (`PR#<n>@<sha>`), target `Major lineage`, chosen `Exact release tag`, completed effects (`exact_tag`, `floating_tag`, `github_release`), and retry outcome (`published:published`, `published:resumed`, or `noop:already_released`) without exposing credentials.
+- Each run reconciles pending first-parent commits in commit order from the branch lineage's latest reachable `Exact release tag` up to `GITHUB_SHA`, publishing one release per labeled merge without coalescing mixed `patch`, `minor`, or `major` intents.
+- Unlabeled merges create no release of their own and still reconcile any earlier pending labeled commits left behind by cancelled or replaced runs.
+- If an earlier commit is blocked or fails, reconciliation logs `Release reconciliation blocked:` and halts without overtaking it with newer commits; once the blocker is fixed, re-running `release.yml` on the branch head completes the blocked commit and then continues in order.
+- Retrying an already-completed release is a safe no-op even if PR labels are modified afterward.
+- Retrying after an interruption (for example after pushing `vX.Y.Z` or moving `v<N>` but before creating the GitHub Release) reuses compatible existing tags/releases and completes the original `vX.Y.Z` without allocating another version.
+- Stale retries of older releases never move a lineage's `Floating major tag` backward past a newer descendant commit (`floating_tag:kept_newer`).
+- Conflicting immutable tags, duplicate semver tags on the same commit, or mismatched GitHub Release target SHAs fail visibly (`::error::`) without force-overwriting; inspect the conflicting tag/release target reported in the error and `Release recovery summary:` before resolving and re-running the workflow.
+
+#### Maintaining an existing major after a new major exists
+
+Once a new Major lineage (for example `v2.0.0`) exists on `main`, publish `patch` or `minor` fixes for an older Major lineage (such as `v1`) through a dedicated Maintenance branch `release/v<N>`:
+
+1. Create `release/v1` from the latest compatible `v1.x.y` commit (before `v2` breaking changes landed on `main`) and apply matching branch-protection rules and required status checks (`lint`, `test-callers`, `security-self-scan`) to `release/v1` on GitHub.
+   - Pushing the new `release/v1` branch (`github.event.created == true`) is automatically skipped by `release.yml` so the existing commit is not re-tagged.
+2. Author or cherry-pick the compatible fix in a PR targeting `release/v1`, add `release:patch` or `release:minor`, and merge once required checks pass (`release:major` is rejected on `release/v<N>` branches).
+3. `release.yml` resolves `target_major = 1` from `release/v1`, computes the next version strictly from `v1.*.*` tags, moves only `v1`, and leaves `v2` unchanged.
 
 #### Manual release (fallback)
 
 ```bash
-# Tag the commit
+# Replace <N> with the Exact release tag's own major number (never move v1 for v2.x.y)
 git tag vX.Y.Z
 git push origin vX.Y.Z
 
-# Move the floating major tag
-git tag -f v1 vX.Y.Z
-git push origin v1 --force
+# Move only the matching Floating major tag
+git tag -f v<N> vX.Y.Z
+git push origin v<N> --force
 ```
 
 ### When to Bump Major
 
 - Removing or renaming a workflow input/output
-- Changing a default value that would break existing Caller workflows
+- Changing a default value or policy that would break existing Caller workflows
 - Removing a workflow or action entirely
+
+When cutting a new Major lineage (for example `v2`), update internal composite-action references inside reusable workflows (`uses: nandohdc/gh-pipelines/actions/<name>@v<N>`) on `main` to `@v2` so `@v2` callers do not transitively execute `@v1` composite actions.
 
 ## Testing
 
@@ -115,9 +142,39 @@ brew install actionlint
 
 # Lint all workflow files
 actionlint .github/workflows/*.yml
+
+# Run release behavior tests against temporary bare Git remotes and scoped adapters
+python3 -m unittest -v scripts/release_test.py
+```
+
+If `pytest` is installed (as in `.github/workflows/lint.yml`), you can also run:
+
+```bash
+python3 -m pytest scripts/release_test.py -q
+```
+
+Candidate smoke orchestration (`scripts/candidate_smoke.py`) is tested against temporary bare Git remotes and fake GitHub API adapters via:
+
+```bash
+python3 -m unittest -v scripts/candidate_smoke_test.py
+```
+
+Helm deployment event/ref/manual-opt-in authorization, mocked `doctl`/`helm`/`kubectl` behavior, and GitHub Environment protection checks (`scripts/helm_environment.py`) are tested via:
+
+```bash
+python3 scripts/helm_deploy_workflow_contract_test.py
+```
+
+Maintainers with access to `nandohdc/gh-pipelines-hosted-acceptance` can execute hosted candidate rehearsals (and clean up the ephemeral smoke branch automatically) or verify the exact-commit promotion gate via:
+
+```bash
+python3 scripts/candidate_smoke.py run --candidate-sha "$(git rev-parse HEAD)" --scenario ordinary --allow-gh-token
+python3 scripts/release.py verify-gate --sha "$(git rev-parse HEAD)" --allow-gh-token --no-dispatch-smoke
 ```
 
 ### Running Self-Tests
+
+Repository-owned jobs and local reusable-workflow callers select GitHub-hosted `ubuntu-latest`; `RUNNER_LABEL` is a downstream-only opt-in. Sonar workflows are deprecated and the bundle fixtures below retain existing required check contexts without executing Sonar.
 
 This repository includes an internal workflow (`.github/workflows/test-callers.yml`) that calls
 `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, and the `ci-with-sonar-*` bundles against fixtures in

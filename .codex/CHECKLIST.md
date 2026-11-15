@@ -21,7 +21,7 @@ Use this checklist before finishing any Codex task in this repository.
 - Confirm GitHub-owned action refs that should remain tag-pinned were not unintentionally converted.
 - Confirm `.github/dependabot.yml` still covers `/` and each composite action directory under `actions/`.
 - If touching `.github/workflows/dependabot-auto-merge.yml`, confirm it remains Dependabot-only on `pull_request_target` and does not check out PR code.
-- If touching `.github/workflows/integration-smoke.yml`, confirm issue creation stays scoped to this repository (explicit `--repo`) and uses `drift`/`sonar-missing` labels correctly.
+- If touching `.github/workflows/integration-smoke.yml`, confirm issue creation stays scoped to this repository (explicit `--repo`) and uses the `drift` label correctly.
 - Confirm release permissions remain minimal (`contents: write` + `pull-requests: read` only where required).
 - Confirm `v1` movement policy remains aligned with backward-compatibility rules.
 - If touching docker hardening surfaces (`docker-build.yml` inputs or `actions/supply-chain-attest`), confirm both default and hardened paths are validated.
@@ -46,7 +46,7 @@ Use this checklist before finishing any Codex task in this repository.
   - rapid consecutive merge path (serialized release execution).
 - If touching `.github/workflows/integration-smoke.yml`, validate:
   - `workflow_dispatch` success path on `main`,
-  - controlled failure path opens `drift` or `sonar-missing` issues in this repository as expected,
+  - controlled failure path opens a `drift` issue in a non-production repository,
   - first scheduled run after merge (`0 7 * * *`) is observed green.
 - If touching `lint.yml`, `test-callers.yml`, or `security-self-scan.yml` job names, keep required check contexts aligned (current `main` contexts: `lint`, `test ci-go caller / lint`, `test ci-go caller / test`, `test ci-node caller / lint`, `test ci-node caller / test`, `test ci-python caller / lint`, `test ci-python caller / test`, `test ci-terraform caller / fmt`, `test ci-terraform caller / validate`, `test ci-terraform caller / plan`, `zizmor`, `shellcheck`, `test ci-with-sonar-go caller / ci / lint`, `test ci-with-sonar-node caller / ci / lint`, `test ci-with-sonar-python caller / ci / lint`).
 - If behavior changed (not just docs/style), validate from a consumer repo using a branch-pinned `uses:` reference.
@@ -66,3 +66,5 @@ Use this checklist before finishing any Codex task in this repository.
 
 - Ensure the diff contains only intended files.
 - Summarize what changed and which checks were executed.
+
+- Repository-owned jobs and internal callers explicitly use GitHub-hosted `ubuntu-latest`; preserve downstream runner selection.

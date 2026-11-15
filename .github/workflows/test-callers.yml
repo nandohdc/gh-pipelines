@@ -12,9 +12,11 @@ on:
   pull_request:
     branches:
       - main
+      - "release/v[0-9]+"
   push:
     branches:
       - main
+      - "release/v[0-9]+"
 
 permissions:
   contents: read
@@ -28,7 +30,7 @@ jobs:
       coverage-min: "0"
       coverage-artifact-name: fixture-go-coverage
       run-build: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-go-multimodule-api:
     name: test ci-go caller (multimodule api)
@@ -41,7 +43,7 @@ jobs:
       run-build: true
       run-integration: true
       integration-packages: "./internal/..."
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-go-multimodule-cli:
     name: test ci-go caller (multimodule cli)
@@ -54,12 +56,12 @@ jobs:
       run-build: true
       run-integration: true
       integration-packages: "./internal/..."
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-go-multimodule-handoff:
     name: test ci-go caller (multimodule handoff)
     needs: [test-ci-go-multimodule-api, test-ci-go-multimodule-cli]
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -105,7 +107,25 @@ jobs:
       working-directory: tests/fixtures/node
       package-manager: npm
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
+
+  test-ci-node-pnpm:
+    name: test ci-node pnpm caller
+    uses: ./.github/workflows/ci-node.yml
+    with:
+      working-directory: tests/fixtures/node-pnpm
+      package-manager: pnpm
+      run-audit: false
+      runner-label: ubuntu-latest
+
+  test-ci-node-yarn:
+    name: test ci-node yarn caller
+    uses: ./.github/workflows/ci-node.yml
+    with:
+      working-directory: tests/fixtures/node-yarn
+      package-manager: yarn
+      run-audit: false
+      runner-label: ubuntu-latest
 
   test-ci-python:
     name: test ci-python caller
@@ -115,7 +135,7 @@ jobs:
       lint-paths: tests/fixtures/python/src tests/fixtures/python/tests
       test-paths: tests/fixtures/python/tests
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-with-sonar-go:
     name: test ci-with-sonar-go caller
@@ -127,7 +147,7 @@ jobs:
       working-directory: tests/fixtures/go
       coverage-min: "0"
       __test_skip_sonar_call: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -142,7 +162,7 @@ jobs:
       package-manager: npm
       run-audit: false
       __test_skip_sonar_call: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -158,7 +178,7 @@ jobs:
       test-paths: tests/fixtures/python/tests
       run-audit: false
       __test_skip_sonar_call: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -170,7 +190,7 @@ jobs:
     with:
       working-directory: tests/fixtures/terraform
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-terraform-no-plan:
     name: test ci-terraform caller (no plan)
@@ -179,7 +199,7 @@ jobs:
       working-directory: tests/fixtures/terraform
       run-plan: false
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   # Exercises docker-build.yml against the docker fixture. On PRs the attest-sbom
   # job is skipped (build-only, no push). On push to main it builds + pushes the
@@ -200,4 +220,108 @@ jobs:
       dockerfile: tests/fixtures/docker/Dockerfile
       platforms: linux/amd64
       attest-sbom: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
+
+  # Exercises ./actions/setup-node directly on a clean runner environment where
+  # preinstalled pnpm and Yarn binaries are removed before setup runs.
+  test-setup-node-clean-runner:
+    name: test setup-node clean runner
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package-manager: [npm, pnpm, yarn]
+        cache: ["true", "false"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Remove preinstalled pnpm and yarn to simulate clean runner
+        if: matrix.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for cmd in pnpm pnpx yarn yarnpkg; do
+            while bin_path="$(command -v "${cmd}" 2>/dev/null || true)"; do
+              [ -n "${bin_path}" ] || break
+              sudo rm -f "${bin_path}"
+            done
+          done
+          if command -v pnpm >/dev/null 2>&1 || command -v yarn >/dev/null 2>&1; then
+            echo "::error::Expected pnpm and yarn to be absent before setup-node runs."
+            exit 1
+          fi
+
+      - name: Setup Node via composite action
+        uses: ./actions/setup-node
+        with:
+          node-version: "20"
+          package-manager: ${{ matrix.package-manager }}
+          cache: ${{ matrix.cache }}
+
+      - name: Install and run fixture checks
+        shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ matrix.package-manager }}
+        run: |
+          set -euo pipefail
+          command -v "${PACKAGE_MANAGER}"
+          "${PACKAGE_MANAGER}" --version
+          case "${PACKAGE_MANAGER}" in
+            npm)
+              cd tests/fixtures/node
+              npm ci
+              npm run lint
+              npm run test
+              ;;
+            pnpm)
+              cd tests/fixtures/node-pnpm
+              pnpm install --frozen-lockfile
+              pnpm run lint
+              pnpm run test
+              ;;
+            yarn)
+              cd tests/fixtures/node-yarn
+              yarn install --immutable || yarn install --frozen-lockfile
+              yarn lint
+              yarn test
+              ;;
+          esac
+
+  # Exercises caller-composed Terraform pattern where caller-scoped env setup
+  # and ./actions/setup-terraform run in the same job (providerless fixture;
+  # validates env persistence across setup-terraform unlike workflow_call jobs).
+  test-setup-terraform-caller-composed:
+    name: test setup-terraform caller-composed
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tests/fixtures/terraform
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Simulate caller-scoped authentication environment
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "TF_IN_AUTOMATION=true" >> "${GITHUB_ENV}"
+          echo "CALLER_AUTH_CONTEXT=synthetic-same-job-oidc" >> "${GITHUB_ENV}"
+
+      - name: Setup Terraform via composite action
+        uses: ./actions/setup-terraform
+        with:
+          terraform-version: "1.9.8"
+
+      - name: Verify caller auth context and run Terraform lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${CALLER_AUTH_CONTEXT:-}" != "synthetic-same-job-oidc" ]; then
+            echo "::error::Expected caller-scoped auth environment to stay in scope after setup-terraform."
+            exit 1
+          fi
+          terraform fmt -check -recursive
+          terraform init -input=false
+          terraform validate
+          terraform plan -input=false -no-color

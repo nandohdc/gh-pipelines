@@ -1,3 +1,4 @@
+# Deprecated: retained for existing v1 consumers; do not use for new integrations.
 # =============================================================================
 # Example: SonarQube scan Caller workflow
 # =============================================================================
