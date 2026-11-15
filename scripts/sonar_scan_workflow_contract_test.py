@@ -8,9 +8,14 @@ SonarQube scanner connectivity.
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -229,6 +234,85 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
     )
 
 
+def test_pre_scan_command_runs_with_strict_error_and_pipefail_semantics() -> None:
+    text = read(WORKFLOW)
+    pre_scan = step_block(text, "Pre-scan command")
+    assert_contains(
+        pre_scan,
+        'bash -eo pipefail -c "${PRE_SCAN_COMMAND}"',
+        "Pre-scan command must run with bash -eo pipefail -c",
+    )
+    assert_not_contains(
+        pre_scan,
+        'bash -c "${PRE_SCAN_COMMAND}"',
+        "Pre-scan command must not drop -eo pipefail via plain bash -c",
+    )
+
+    workflow_data = yaml.safe_load(text)
+    jobs = workflow_data["jobs"]
+    assert len(jobs) == 1
+    steps = next(iter(jobs.values()))["steps"]
+    pre_scan_idx = next(i for i, step in enumerate(steps) if step.get("name") == "Pre-scan command")
+    sonar_scan_idx = next(
+        i
+        for i, step in enumerate(steps)
+        if "SonarSource/sonarqube-scan-action" in str(step.get("uses", ""))
+    )
+    assert pre_scan_idx < sonar_scan_idx, "Pre-scan command must run before SonarQube scan step"
+
+    run_script = steps[pre_scan_idx]["run"]
+    assert steps[pre_scan_idx].get("if") == "inputs.pre-scan-command != ''"
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        base_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+
+        proc_mid_fail = subprocess.run(
+            ["bash", "-c", run_script],
+            cwd=tmp_dir,
+            env={**base_env, "PRE_SCAN_COMMAND": "false; echo trailing-success"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc_mid_fail.returncode != 0, "Intermediate command failure must fail pre-scan hook"
+        assert "trailing-success" not in proc_mid_fail.stdout, (
+            "Trailing command must not run after intermediate failure"
+        )
+
+        proc_pipe_fail = subprocess.run(
+            ["bash", "-c", run_script],
+            cwd=tmp_dir,
+            env={**base_env, "PRE_SCAN_COMMAND": "false | true"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc_pipe_fail.returncode != 0, "Pipeline failure must fail pre-scan hook under pipefail"
+
+        proc_ok = subprocess.run(
+            ["bash", "-c", run_script],
+            cwd=tmp_dir,
+            env={**base_env, "PRE_SCAN_COMMAND": "echo step-one > hook.txt && echo step-two >> hook.txt"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc_ok.returncode == 0, f"Successful multi-command hook failed: {proc_ok.stderr}"
+        assert (Path(tmp_dir) / "hook.txt").read_text(encoding="utf-8") == "step-one\nstep-two\n"
+
+    usage = read(ROOT / "docs" / "USAGE.md")
+    assert_contains(
+        usage,
+        "bash -eo pipefail -c",
+        "docs/USAGE.md must document strict pre-scan-command shell semantics",
+    )
+    assert_contains(
+        usage,
+        "|| true",
+        "docs/USAGE.md must explain how callers that intentionally tolerate failures should guard commands",
+    )
+
+
 def main() -> None:
     test_workflow_url_contract()
     test_preflight_runs_before_scan_and_distinguishes_failures()
@@ -239,6 +323,7 @@ def main() -> None:
     test_no_hardcoded_urls_or_quick_tunnel_active_config()
     test_external_actions_are_pinned()
     test_docs_example_and_lint_contract_are_updated()
+    test_pre_scan_command_runs_with_strict_error_and_pipefail_semantics()
     print("sonar_scan_workflow_contract_test: ok")
 
 

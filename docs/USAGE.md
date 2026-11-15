@@ -635,6 +635,9 @@ Runs SonarQube analysis and waits for quality gate status. The workflow resolves
 | `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used for scanner calls |
 | `runner-label` | string | no | `""` | Self-hosted runner label. Empty uses `ubuntu-latest` |
 
+> [!NOTE]
+> `pre-scan-command` runs inside `bash -eo pipefail -c`. Any intermediate command or pipeline failure aborts the job before SonarQube scanning starts. Callers that intentionally tolerate a non-zero preparation command should guard that command explicitly (for example, `my-tool || true`).
+
 #### Secrets
 
 | Secret | Required | Description |
