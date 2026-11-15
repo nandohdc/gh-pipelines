@@ -9,7 +9,7 @@ import os
 import re
 import subprocess
 import sys
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
@@ -90,6 +90,7 @@ class ReleaseOutcome:
     next_tag: Optional[str] = None
     target_sha: Optional[str] = None
     plan: Optional[ReleasePlan] = None
+    reconciled_outcomes: Tuple["ReleaseOutcome", ...] = ()
 
 
 def _run_cmd(cmd: Sequence[str], workdir: Path) -> subprocess.CompletedProcess:
@@ -268,6 +269,99 @@ def _ensure_commit_available(config: ReleaseConfig, sha: str) -> None:
     result = _run_cmd(["git", "cat-file", "-e", f"{sha}^{{commit}}"], config.workdir)
     if result.returncode != 0:
         _run_cmd(["git", "fetch", "--no-tags", "--quiet", config.remote, sha], config.workdir)
+
+
+def _ensure_full_history(config: ReleaseConfig) -> None:
+    _ensure_commit_available(config, config.sha)
+    shallow = _run_cmd(["git", "rev-parse", "--is-shallow-repository"], config.workdir)
+    if shallow.returncode == 0 and shallow.stdout.strip() == "true":
+        _run_cmd(["git", "fetch", "--unshallow", "--no-tags", "--quiet", config.remote], config.workdir)
+
+
+def _commit_message_for_sha(config: ReleaseConfig, commit_sha: str) -> str:
+    if commit_sha == config.sha and config.head_commit_message:
+        return config.head_commit_message
+    return _run_checked(["git", "log", "-1", "--format=%B", commit_sha], config.workdir)
+
+
+def _list_first_parent_commits(config: ReleaseConfig) -> List[str]:
+    output = _run_checked(
+        ["git", "rev-list", "--first-parent", "--reverse", config.sha],
+        config.workdir,
+    )
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def _is_anchor_incomplete(
+    config: ReleaseConfig,
+    github: GitHubClient,
+    anchor_sha: str,
+    anchor_tags: List[Tuple[str, Tuple[int, int, int]]],
+) -> bool:
+    anchor_tag, anchor_ver = anchor_tags[0]
+    commit_msg = _commit_message_for_sha(config, anchor_sha)
+    commit_config = replace(config, sha=anchor_sha, head_commit_message=commit_msg)
+    pr_number = _resolve_pr_number(commit_config, github)
+    if pr_number is None:
+        return False
+    labels = github.list_pr_labels(config.repository, pr_number)
+    if _resolve_release_type(labels) is None:
+        return False
+
+    current_floating_sha = _resolve_remote_tag_commit(config, f"v{anchor_ver[0]}")
+    floating_covered = current_floating_sha == anchor_sha or (
+        current_floating_sha is not None
+        and _is_ancestor(config.workdir, anchor_sha, current_floating_sha)
+    )
+    if not floating_covered:
+        return True
+    return github.get_release(anchor_tag) is None
+
+
+def _list_pending_lineage_commits(
+    config: ReleaseConfig,
+    github: GitHubClient,
+    remote_tags: Dict[str, Tuple[Tuple[int, int, int], str]],
+) -> List[str]:
+    """Return ordered first-parent commits to reconcile for the target branch lineage."""
+    branch_major: Optional[int] = None
+    if config.base_ref != "main":
+        match = _MAINTENANCE_BRANCH_RE.match(config.base_ref)
+        if not match:
+            return [config.sha]
+        branch_major = int(match.group(1))
+
+    first_parent = _list_first_parent_commits(config)
+    if not first_parent:
+        return [config.sha]
+
+    first_parent_index = {sha: idx for idx, sha in enumerate(first_parent)}
+    by_sha: Dict[str, List[Tuple[str, Tuple[int, int, int]]]] = {}
+    for tag, (ver, tag_sha) in remote_tags.items():
+        if branch_major is not None and ver[0] != branch_major:
+            continue
+        if tag_sha in first_parent_index:
+            by_sha.setdefault(tag_sha, []).append((tag, ver))
+
+    anchor_idx: Optional[int] = None
+    anchor_tags: List[Tuple[str, Tuple[int, int, int]]] = []
+    for tag_sha, items in by_sha.items():
+        idx = first_parent_index[tag_sha]
+        if anchor_idx is None or idx > anchor_idx:
+            anchor_idx = idx
+            anchor_tags = sorted(items, key=lambda item: item[1])
+
+    if anchor_idx is None:
+        return first_parent
+
+    if anchor_idx == len(first_parent) - 1:
+        return [config.sha]
+
+    anchor_sha = first_parent[anchor_idx]
+    tail_commits = first_parent[anchor_idx + 1 :]
+    if len(anchor_tags) == 1 and _is_anchor_incomplete(config, github, anchor_sha, anchor_tags):
+        return [anchor_sha] + tail_commits
+    return tail_commits
 
 
 def _find_existing_exact_tags_for_sha(
@@ -598,28 +692,32 @@ def _log_recovery_summary(
     )
 
 
-def run_release(config: ReleaseConfig, github: GitHubClient) -> ReleaseOutcome:
-    """Resolve release intent, verify guards, plan target lineage, and publish."""
-    if config.base_ref != "main" and config.is_branch_creation:
-        print(
-            f"Skipping release for initial branch creation on {config.base_ref} "
-            f"at {config.sha}."
-        )
-        return ReleaseOutcome(status="skipped", reason="branch_created")
-
+def _run_single_commit_release(
+    config: ReleaseConfig,
+    github: GitHubClient,
+    *,
+    remote_tags: Optional[Dict[str, Tuple[Tuple[int, int, int], str]]] = None,
+) -> ReleaseOutcome:
+    """Resolve release intent, verify guards, plan target lineage, and publish one commit."""
     pr_number = _resolve_pr_number(config, github)
     if pr_number is None:
         print(f"No merged PR associated with commit {config.sha}; skipping release.")
-        return ReleaseOutcome(status="skipped", reason="no_merged_pr")
+        return ReleaseOutcome(status="skipped", reason="no_merged_pr", target_sha=config.sha)
 
     labels = github.list_pr_labels(config.repository, pr_number)
     release_type = _resolve_release_type(labels)
 
-    remote_tags = _list_remote_semver_tags(config)
+    if remote_tags is None:
+        remote_tags = _list_remote_semver_tags(config)
     existing_for_sha = _find_existing_exact_tags_for_sha(remote_tags, config.sha)
     if release_type is None and not existing_for_sha:
         print("No release label found; skipping release.")
-        return ReleaseOutcome(status="skipped", reason="no_release_label", pr_number=pr_number)
+        return ReleaseOutcome(
+            status="skipped",
+            reason="no_release_label",
+            pr_number=pr_number,
+            target_sha=config.sha,
+        )
 
     if release_type is not None:
         print(f"Detected release type: {release_type} (PR #{pr_number})")
@@ -692,6 +790,56 @@ def run_release(config: ReleaseConfig, github: GitHubClient) -> ReleaseOutcome:
         target_sha=config.sha,
         plan=plan,
     )
+
+
+def run_release(config: ReleaseConfig, github: GitHubClient) -> ReleaseOutcome:
+    """Reconcile pending lineage release intents in commit order up to config.sha."""
+    if config.base_ref != "main" and config.is_branch_creation:
+        print(
+            f"Skipping release for initial branch creation on {config.base_ref} "
+            f"at {config.sha}."
+        )
+        return ReleaseOutcome(status="skipped", reason="branch_created")
+
+    _ensure_full_history(config)
+    remote_tags = _list_remote_semver_tags(config)
+    candidates = _list_pending_lineage_commits(config, github, remote_tags)
+    if len(candidates) > 1:
+        print(
+            f"Reconciling lineage commits in order: branch={config.base_ref} "
+            f"count={len(candidates)} head={config.sha}"
+        )
+
+    outcomes: List[ReleaseOutcome] = []
+    for idx, commit_sha in enumerate(candidates):
+        current_tags = remote_tags if idx == 0 else _list_remote_semver_tags(config)
+        commit_msg = _commit_message_for_sha(config, commit_sha)
+        commit_config = replace(config, sha=commit_sha, head_commit_message=commit_msg)
+        try:
+            outcome = _run_single_commit_release(
+                commit_config,
+                github,
+                remote_tags=current_tags,
+            )
+        except ReleaseError as exc:
+            if len(candidates) > 1:
+                print(
+                    f"Release reconciliation blocked: commit={commit_sha} "
+                    f"branch={config.base_ref} remaining_commits={len(candidates) - idx - 1} "
+                    f"error={exc}"
+                )
+            raise
+        outcomes.append(outcome)
+
+    head_outcome = outcomes[-1]
+    published_outcomes = [item for item in outcomes if item.status == "published"]
+    if head_outcome.status == "skipped" and published_outcomes:
+        return replace(
+            published_outcomes[-1],
+            reason="reconciled",
+            reconciled_outcomes=tuple(outcomes),
+        )
+    return replace(head_outcome, reconciled_outcomes=tuple(outcomes))
 
 
 def _config_from_env() -> ReleaseConfig:

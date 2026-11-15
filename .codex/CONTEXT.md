@@ -78,6 +78,7 @@
   - derives semver bump from labels `release:patch|release:minor|release:major` within isolated Major lineages (`ADR-0001`)
   - no-ops when no release label exists on the associated merged PR
   - serializes executions via `concurrency` (`release-${{ github.ref_name }}`)
+  - reconciles first-parent commits in commit order from the branch lineage's latest reachable Exact release tag (resuming an incomplete anchor if needed) so rapid bursts, cancelled queued runs, and trailing unlabeled merges never drop or overtake earlier labeled merges, halting visibly on any blocked commit
   - preserves each commit's chosen Exact release tag across retries and partial failures (`exact_tag` -> `floating_tag` -> `github_release`), treats completed retries as no-ops, refuses backward floating-tag movement on stale retries, and fails visibly on conflicting immutable tags or release target SHAs
   - creates immutable `vX.Y.Z`, updates the matching `v<N>` Floating major tag forward-only within lineage `N`, and creates GitHub release notes
 - Internal workflow security self-scan:
