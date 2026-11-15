@@ -23,10 +23,8 @@ from scripts.contract_lib import (
     step_block,
 )
 WORKFLOW = ROOT / ".github" / "workflows" / "sonar-scan.yml"
-REPOSITORY_WORKFLOW = ROOT / ".github" / "workflows" / "sonar.yml"
 EXAMPLE = ROOT / "examples" / "sonar-scan.yml"
 LINT_WORKFLOW = ROOT / ".github" / "workflows" / "lint.yml"
-PROJECT = ROOT / "sonar-project.properties"
 
 
 def test_workflow_url_contract() -> None:
@@ -207,36 +205,6 @@ def test_external_actions_are_pinned() -> None:
         assert_contains(artifacts, expected, f"coverage artifact handoff missing: {expected}")
 
 
-def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
-    workflow = read(REPOSITORY_WORKFLOW)
-    sonar_project = read(PROJECT)
-
-    assert_contains(sonar_project, "sonar.projectKey=nandohdc_gh-pipelines_7ee6bd5a-8a54-4996-a00d-668315012f38", "repo Sonar project key must stay stable")
-    assert_contains(sonar_project, "sonar.projectName=gh-pipelines", "repo Sonar project name must be set")
-    assert_contains(sonar_project, "sonar.sources=.github,actions,examples,scripts,docs,README.md,SECURITY.md,CHANGELOG.md,AGENTS.md,CLAUDE.md", "repo Sonar sources should be scoped to active library paths")
-    assert_contains(sonar_project, "sonar.tests=tests,scripts", "repo Sonar tests should be classified separately")
-    assert_contains(sonar_project, "sonar.test.inclusions=scripts/*_test.py", "contract tests must be classified as test code, not coverage-eligible sources")
-    assert_contains(sonar_project, "sonar.python.version=3.12", "repo Sonar config must pin the analyzed Python version for precise analysis")
-    assert_contains(sonar_project, "sonar.python.coverage.reportPaths=coverage.xml", "repo Sonar config must set coverage report path for contract_lib coverage")
-    assert_contains(sonar_project, ",scripts/*_test.py", "contract tests must be excluded from Sonar sources")
-    assert_contains(sonar_project, "**/node_modules/**", "repo Sonar exclusions should avoid dependency directories")
-
-    assert_contains(workflow, "name: sonar", "missing internal Sonar workflow")
-    assert_contains(workflow, "pull_request:", "internal Sonar workflow must run on PRs")
-    assert_contains(workflow, "if: github.actor != 'dependabot[bot]'", "internal Sonar workflow must skip Dependabot PRs which lack secrets")
-    assert_contains(workflow, "branches:\n      - main", "internal Sonar workflow must target main")
-    assert_contains(workflow, "uses: ./.github/workflows/sonar-scan.yml", "internal Sonar workflow should reuse the library workflow")
-    assert_not_contains(workflow, "svc.cluster.local", "internal Sonar workflow must not hardcode the in-cluster URL, which only resolves on ARC runners")
-    assert_contains(workflow, "runner-label: ${{ vars.RUNNER_LABEL }}", "internal Sonar workflow must use the repo runner variable")
-    assert_contains(workflow, 'pre-scan-python-version: "3.12"', "internal Sonar workflow must install Python for coverage on minimal ARC runners")
-    assert_contains(workflow, "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", "internal Sonar workflow must forward the Sonar token secret")
-    assert_contains(workflow, "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}", "internal Sonar workflow must forward the preferred scanner URL secret")
-    assert_contains(workflow, "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}", "internal Sonar workflow must forward the public scanner URL secret so scans work on GitHub-hosted runners")
-    assert_contains(workflow, "pre-scan-command:", "internal Sonar workflow must pass the pre-scan command")
-    assert_contains(workflow, "pytest scripts/contract_lib_test.py", "internal Sonar workflow must run contract_lib unit tests for coverage")
-    assert_not_contains(workflow, "trycloudflare.com", "internal Sonar workflow must not use disposable Quick Tunnel URLs")
-
-
 def test_docs_example_and_lint_contract_are_updated() -> None:
     example = read(EXAMPLE)
     lint = read(LINT_WORKFLOW)
@@ -270,7 +238,6 @@ def main() -> None:
     test_runner_label_fork_safety_and_permissions()
     test_no_hardcoded_urls_or_quick_tunnel_active_config()
     test_external_actions_are_pinned()
-    test_repository_sonar_workflow_uses_public_scanner_secret()
     test_docs_example_and_lint_contract_are_updated()
     print("sonar_scan_workflow_contract_test: ok")
 

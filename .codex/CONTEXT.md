@@ -92,7 +92,7 @@
   - `.github/workflows/integration-smoke.yml`
   - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
   - checks active canary consumer `nandohdc/financial-events-ingestion-api` by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
-  - opens a `drift`- or `sonar-missing`-labeled issue in this repository on failure
+  - opens a `drift`-labeled issue in this repository on failure; Sonar presence is not enforced
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, `sign-image`, and `attest-sbom` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance/attestation logic
@@ -119,6 +119,8 @@
 ## Non-negotiable decisions
 
 - This repo is not an app runtime; it is shared pipeline infrastructure.
+- Repository-owned automation runs on GitHub-hosted `ubuntu-latest`; downstream consumers retain runner selection.
+- Sonar workflows are deprecated; preserve existing `v1` behavior during migration.
 - Reusable workflow and action names stay in kebab-case.
 - `workflow_call` interfaces are stable contracts for consumer repos.
 - Internal-only workflows (like self-CI linting) are not exposed via `workflow_call`.

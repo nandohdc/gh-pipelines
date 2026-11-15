@@ -14,7 +14,7 @@ permissions:
 jobs:
   lint:
     name: lint
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,6 +27,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install workflow contract test dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'PyYAML==6.0.2'
+
       - name: Static workflow contract tests
         shell: bash
         run: |
@@ -36,6 +42,7 @@ jobs:
           python scripts/sonar_documentation_contract_test.py
           python scripts/consumer_terminology_contract_test.py
           python scripts/multimodule_go_workflow_contract_test.py
+          python scripts/hosted_runner_workflow_contract_test.py
 
       - name: Contract library unit tests
         shell: bash

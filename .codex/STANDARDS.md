@@ -65,7 +65,7 @@ These standards are mandatory for Codex changes in this repository.
 
 - Run `actionlint .github/workflows/*.yml` before completion.
 - Run `actionlint -shellcheck=shellcheck .github/workflows/*.yml` when validating inline bash coverage.
-- Run relevant static workflow contract tests under `scripts/*_workflow_contract_test.py`; `scripts/sonar_documentation_contract_test.py` guards the Sonar consumer docs/examples contract; `lint.yml` runs the standalone Sonar workflow, language bundle, and Sonar documentation contract tests.
+- Run relevant static workflow contract tests under `scripts/*_workflow_contract_test.py`; `scripts/sonar_documentation_contract_test.py` guards the Sonar consumer docs/examples contract; `lint.yml` runs the hosted-runner, standalone Sonar workflow, language bundle, and Sonar documentation contract tests.
 - If a single workflow is under active iteration, run `actionlint .github/workflows/<name>.yml`.
 - If touching `.github/workflows/security-self-scan.yml` or `.zizmor.yml`, run:
   - `actionlint -shellcheck=shellcheck .github/workflows/*.yml`
@@ -76,7 +76,7 @@ These standards are mandatory for Codex changes in this repository.
 - If touching `.github/workflows/release.yml`, validate labeled and unlabeled merged-PR flows on pushes to `main`, including consecutive merge behavior.
 - If touching `.github/workflows/integration-smoke.yml`, validate:
   - `workflow_dispatch` success path on `main`,
-  - controlled failure path opens `drift` or `sonar-missing` issues in this repository as expected,
+  - controlled failure path opens a `drift` issue in a non-production repository,
   - first scheduled run after merge (`0 7 * * *`) completes green.
 
 ## Branch protection standards
@@ -90,3 +90,5 @@ These standards are mandatory for Codex changes in this repository.
 
 - Backward-compatible changes ship as new minor/patch tags and can move `v1`.
 - Breaking changes require a new major; do not move `v1` for breaking changes.
+
+Repository-owned jobs and internal callers select GitHub-hosted `ubuntu-latest`; preserve downstream runner selection. Sonar workflows are deprecated and existing `v1` behavior remains available during migration.

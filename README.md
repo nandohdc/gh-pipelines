@@ -18,6 +18,8 @@ consumer.
 
 ## Available Workflows
 
+Sonar workflows are deprecated across the environment. Existing `v1` interfaces remain available for compatibility; use the language CI workflows for new callers.
+
 | Workflow | File | Purpose |
 | --- | --- | --- |
 | **Go CI** | `ci-go.yml` | Lint, test, coverage, vuln scan for Go services |
@@ -95,6 +97,8 @@ isolated while retaining one reusable CI contract.
 
 ## Runner Selection
 
+Repository-owned automation runs on GitHub-hosted `ubuntu-latest` and ignores `RUNNER_LABEL`. The integration probe retains its deprecated `runner-label` dispatch input but ignores it. The selection below applies to downstream Consumer repositories.
+
 Reusable workflows accept an optional `runner-label` input. Jobs default to GitHub-hosted `ubuntu-latest` when the input is empty. Pass your runner label at the call site to target a self-hosted runner:
 
 ```yaml
@@ -116,13 +120,15 @@ See [docs/USAGE.md](docs/USAGE.md#runner-selection) for per-workflow input table
 
 ## SonarQube URL Contract
 
+The following is compatibility guidance for deprecated Sonar workflows, not a recommendation for new integrations.
+
 SonarQube workflows separate the private scanner endpoint from the public UI/base URL:
 
 | Setting | Purpose |
 | --- | --- |
 | `SONAR_SCANNER_HOST_URL` / `sonar-scanner-host-url` | Scanner server URL used by SonarSource scan and quality-gate actions. For local-kind ARC runners, prefer `http://sonarqube.sonarqube.svc.cluster.local:9000`. |
 | `SONAR_PUBLIC_BASE_URL` / `sonar-public-base-url` | Stable public HTTPS SonarQube UI/base URL for generated links and browser callbacks. It is not used for scanner connectivity. |
-| `SONAR_HOST_URL` | Legacy scanner URL fallback kept for backward compatibility only. New Caller workflows should use `SONAR_SCANNER_HOST_URL`. |
+| `SONAR_HOST_URL` | Legacy scanner URL fallback kept for backward compatibility only. Existing callers can use `SONAR_SCANNER_HOST_URL`. |
 | `RUNNER_LABEL` / `runner-label` | Selects the runner pool. Use the appropriate ARC runner label when the scanner URL is the local-kind Service URL. |
 
 If the local ARC runtime is offline, GitHub jobs remain queued or pending until a matching runner becomes available. If a runner starts but SonarQube is unavailable, starting, or unhealthy, the preflight fails before scanning and the SonarQube check cannot turn green without contacting SonarQube.
@@ -145,7 +151,7 @@ Use `@v1` for normal backward-compatible delivery. An exact release reference fi
 actions/              Composite actions for shared steps
 docs/                 Usage, contribution, and integration-canary guides
 examples/             Copy-paste Caller workflow examples
-scripts/              Helper scripts for consumer onboarding (for example, enforce-sonar-branch-protection.sh)
+scripts/              Workflow contract tests and maintenance helpers
 tests/fixtures/       Minimal fixtures exercised by the internal regression harness (go, node, python, terraform)
 ```
 

@@ -7,6 +7,8 @@ usage() {
 Usage:
   scripts/enforce-sonar-branch-protection.sh [owner/repo] [status-check-context] [branch]
 
+Deprecated: Sonar is being retired. Do not add new Sonar required checks.
+
 Defaults:
   owner/repo            -> current gh repo (if available)
   status-check-context  -> ci / sonar-scan
