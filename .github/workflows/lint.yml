@@ -4,9 +4,11 @@ on:
   pull_request:
     branches:
       - main
+      - "release/v[0-9]+"
   push:
     branches:
       - main
+      - "release/v[0-9]+"
 
 permissions:
   contents: read
@@ -14,7 +16,7 @@ permissions:
 jobs:
   lint:
     name: lint
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -27,6 +29,12 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install workflow contract test dependency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install 'PyYAML==6.0.2'
+
       - name: Static workflow contract tests
         shell: bash
         run: |
@@ -36,6 +44,10 @@ jobs:
           python scripts/sonar_documentation_contract_test.py
           python scripts/consumer_terminology_contract_test.py
           python scripts/multimodule_go_workflow_contract_test.py
+          python scripts/hosted_runner_workflow_contract_test.py
+          python scripts/node_setup_workflow_contract_test.py
+          python scripts/helm_deploy_workflow_contract_test.py
+          python scripts/terraform_documentation_contract_test.py
 
       - name: Contract library unit tests
         shell: bash
@@ -43,6 +55,24 @@ jobs:
           set -euo pipefail
           python -m pip install pytest pytest-cov
           python -m pytest scripts/contract_lib_test.py -q --cov=scripts.contract_lib --cov-report=term-missing
+
+      - name: Release behavior tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest scripts/release_test.py -q --cov=scripts.release --cov-report=term-missing
+
+      - name: Canary probe tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest scripts/canary_probe_test.py -q --cov=scripts.canary_probe --cov-report=term-missing
+
+      - name: Candidate smoke tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest scripts/candidate_smoke_test.py -q --cov=scripts.candidate_smoke --cov-report=term-missing
 
       - name: Install yamllint
         shell: bash

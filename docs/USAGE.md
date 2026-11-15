@@ -14,6 +14,17 @@ necessarily a Workflow consumer.
 
 ---
 
+## Versioning, Compatibility, and Major Migration
+
+`gh-pipelines` publishes independent compatible **Major lineages** (`v1`, `v2`, …):
+
+- **Floating major tags (`@v1`, `@v2`, …)**: Recommended for both Workflow consumers and Composite-action consumers. Compatible `patch` and `minor` releases advance only the matching Floating major tag (`v1.x.y` -> `v1`, `v2.x.y` -> `v2`).
+- **Exact release tags (`@v1.10.0`, `@v2.0.0`, …)**: Immutable point tags that never move once published.
+- **Breaking changes & deliberate migration**: Breaking interface or default-behavior changes (for example, tightening default deployment restrictions) always start a new Major lineage (`v2.0.0` + `v2`) and never move `v1`. Existing consumers stay on `@v1` safely and opt into `@v2` by updating their `uses:` references after checking [CHANGELOG.md](../CHANGELOG.md) and the workflow inputs below.
+- **Consistent adoption**: When migrating a Caller workflow to a new major, update both reusable Workflow invocations (`.github/workflows/*.yml@v2`) and any direct Composite-action `uses:` (`actions/*@v2`) together. Internal composite-action references inside reusable workflows stay pinned to their own Major lineage.
+
+---
+
 ## Runner Selection
 
 Every reusable workflow exposes an optional `runner-label` input. Jobs resolve `runs-on` to the supplied label, or fall back to GitHub-hosted `ubuntu-latest` when the input is empty or omitted.
@@ -39,17 +50,7 @@ gh variable set RUNNER_LABEL --body "arc-runners-myorg"
 
 ### Internal repo usage
 
-Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) resolve their own `runs-on` directly from `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`, so the gh-pipelines repo itself can run on the same pool without requiring Caller workflows to pass anything.
-
-`test-callers.yml` is a Self-test caller. It forwards the variable to the local
-reusable workflows it invokes, but is not a Consumer repository:
-
-```yaml
-with:
-  runner-label: ${{ vars.RUNNER_LABEL }}
-```
-
-For the `nandohdc/gh-pipelines` repository, set `RUNNER_LABEL` to `arc-runners-gh-pipelines`.
+Repository-owned automation selects GitHub-hosted `ubuntu-latest` explicitly. This includes fixture callers, release, security scanning, dependency automation, and scheduled/manual probes. A repository or organization `RUNNER_LABEL` does not affect internal jobs. The integration probe retains its deprecated `runner-label` dispatch input for compatibility and ignores it. Existing jobs queued on an older revision keep their original runner selection.
 
 ### Self-hosted runner prerequisites
 
@@ -58,13 +59,14 @@ For the `nandohdc/gh-pipelines` repository, set `RUNNER_LABEL` to `arc-runners-g
 | `ci-go.yml` | `build-essential` (installed on demand), `CGO_ENABLED=1` set automatically |
 | `helm-deploy.yml` | `kubectl` — installed by `actions/setup-doctl` composite |
 | `docker-build.yml`, `docker-release.yml` | Docker daemon |
-| `lint.yml` | `yamllint` — installed via pip before the action step |
 
 Use a runner image broad enough for all jobs the workflow triggers.
 
 ---
 
 ## SonarQube Scanner/Public URL Contract
+
+Sonar workflows are deprecated across the environment. The following reference preserves existing `v1` behavior for consumers during migration; do not adopt it for new integrations.
 
 SonarQube workflows use two different URL roles. Keep them separate in Consumer repositories:
 
@@ -178,6 +180,10 @@ Reusable CI workflow for Node.js/TypeScript services with lint, tests, coverage 
 2. **test** — install dependencies + run test script + optional coverage gate
 3. **audit** — install dependencies + run audit scan (conditional)
 
+Package manager activation and cache order:
+- Each job initializes Node.js first, enables `corepack` (setting `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` when `package-manager` is `pnpm` or `yarn`), and only then restores/configures the package-manager dependency cache so clean runners succeed without preinstalled `pnpm` or `yarn` binaries.
+- When using `pnpm` or `yarn`, declare `"packageManager"` (for example `"pnpm@9.15.4"` or `"yarn@1.22.22"`) and commit the corresponding lockfile (`pnpm-lock.yaml` or `yarn.lock`).
+
 Coverage gate behavior:
 - If `coverage-min` is `0`, the gate is skipped.
 - If `coverage-min` is greater than `0`, workflow reads coverage from `coverage/coverage-summary.json` (preferred) or `coverage/lcov.info`.
@@ -257,6 +263,8 @@ jobs:
 
 ### ci-with-sonar-go.yml / ci-with-sonar-node.yml / ci-with-sonar-python.yml — Language CI + Sonar Bundle
 
+**Deprecated:** existing `v1` callers retain their behavior; use language CI without Sonar for new integrations.
+
 Reusable bundle workflows that run language CI and SonarQube in parallel. Sonar credentials are fetched per-run from Doppler, so Workflow consumer repositories only store `DOPPLER_TOKEN`.
 
 **Trigger:** `workflow_call`
@@ -327,11 +335,15 @@ jobs:
 
 ### ci-terraform.yml — Terraform CI Pipeline
 
-Reusable CI workflow for Terraform projects with formatting checks, validation, planning, and optional IaC security audit.
+Reusable CI workflow for Terraform projects with formatting checks, validation, optional planning, and optional IaC security audit.
 
 **Trigger:** `workflow_call`
 
-Cloud credentials are managed by the Caller workflow and should be configured in it (environment variables or OIDC).
+`workflow_call` jobs run on isolated runner VMs and **do not inherit** caller job steps, environment variables, or OIDC tokens (hosted runners never inherit caller secrets or ambient cloud credentials across reusable workflow boundaries).
+
+- **Use `ci-terraform.yml@v1` when:** running credential-free static checks (`run-plan: false` skips remote backend init and `plan` while running `fmt`, `init -backend=false`, `validate`, and audit), running `plan` without external credentials (such as a providerless configuration), or targeting a downstream `runner-label` whose runner preconfigures ambient identity.
+- **Compose a caller-owned job with `nandohdc/gh-pipelines/actions/setup-terraform@v1` when:** `terraform init` (remote backend) or `terraform plan` requires cloud OIDC or credentials. Keep your cloud auth step (provider-independent: AWS OIDC, GCP Workload Identity, Azure login, or `TF_TOKEN_*`), `actions/setup-terraform@v1`, and Terraform commands inside the **same** job with `permissions: { contents: read, id-token: write }`.
+- **Verification boundary:** Providerless fixture runs (`tests/fixtures/terraform`) prove workflow syntax, env persistence, and Terraform CLI lifecycle execution; actual cloud OIDC acceptance requires your provider authentication step in a caller-owned job.
 
 #### Inputs
 
@@ -341,22 +353,28 @@ Cloud credentials are managed by the Caller workflow and should be configured in
 | `working-directory` | string | no | `.` | Directory containing Terraform configuration |
 | `var-file` | string | no | `""` | Optional var-file passed to `terraform plan` |
 | `backend-config` | string | no | `""` | Optional backend config (`key=value` or file path) passed to `terraform init` |
+| `run-plan` | boolean | no | `true` | Run `terraform plan` (backend init enabled; set `false` for credential-free static validation) |
 | `run-audit` | boolean | no | `true` | Run IaC security audit job |
 | `audit-tool` | string | no | `tfsec` | Audit tool (`tfsec` or `checkov`) |
+| `tfsec-additional-args` | string | no | `""` | Additional `tfsec` CLI flags (`audit-tool=tfsec` only) |
 | `upload-plan` | boolean | no | `true` | Upload `tfplan` artifact on pull request events |
+| `runner-label` | string | no | `""` | Self-hosted runner label (empty uses `ubuntu-latest`) |
 
 #### Jobs
 
 1. **fmt** — `terraform fmt -check -recursive`
 2. **validate** — `terraform init -backend=false` and `terraform validate`
-3. **plan** — `terraform init`, `terraform plan -out=tfplan -input=false`, optional `tfplan` artifact upload on PR events
-4. **audit** — optional `tfsec` (default) or `checkov` scan
+3. **plan** (when `run-plan: true`) — `terraform init`, `terraform plan -out=tfplan -input=false`, optional `tfplan` artifact upload on PR events
+4. **audit** (when `run-audit: true`) — optional `tfsec` (default) or `checkov` scan
 
-#### Example
+#### Example 1 — Credential-free static validation via reusable workflow
 
 ```yaml
 name: terraform-ci
 on: [push, pull_request]
+
+permissions:
+  contents: read
 
 jobs:
   terraform:
@@ -364,11 +382,39 @@ jobs:
     with:
       terraform-version: "1.9.8"
       working-directory: "infra"
-      var-file: "envs/dev.tfvars"
-      backend-config: "envs/dev.backend.hcl"
+      run-plan: false
       run-audit: true
       audit-tool: "tfsec"
-      upload-plan: true
+```
+
+#### Example 2 — Caller-composed authenticated job (same-job OIDC + `actions/setup-terraform@v1`)
+
+Use a caller-owned job (`runs-on` + `steps`) instead of `workflow_call` whenever remote state `init` or `plan` needs cloud OIDC/credentials. Never combine `uses: .../ci-terraform.yml@v1` with `runs-on:` or `steps:` on the same job.
+
+```yaml
+name: terraform-plan
+on: [push, pull_request]
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: "infra"
+    steps:
+      - uses: actions/checkout@v7
+      # Authenticate with your cloud provider in this same job before running Terraform
+      # (for example: AWS OIDC, GCP Workload Identity, Azure login, or TF_TOKEN_* env).
+      - uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
+        with:
+          terraform-version: "1.9.8"
+      - run: terraform fmt -check -recursive
+      - run: terraform init -input=false -backend-config="envs/dev.backend.hcl"
+      - run: terraform validate
+      - run: terraform plan -input=false -no-color -var-file="envs/dev.tfvars"
 ```
 
 ---
@@ -487,7 +533,14 @@ jobs:
 
 ### helm-deploy.yml — Helm Deploy
 
-Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Performs dry-run on pull requests, actual deployment on push to main.
+Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster.
+
+In **`@v2`**, an unprivileged `authorize` preflight job evaluates `github.event_name`, `github.ref`, `github.event.repository.default_branch`, pull-request fork metadata, `allow-manual-deploy`, and `environment` **before** the `deploy` job enters any GitHub Environment gate or obtains cluster credentials / invokes Helm / `post-deploy-kubectl`:
+
+- **Default-branch `push` (`refs/heads/<default_branch>`)**: Authorizes `mode=deploy`, configures cluster credentials, executes real `helm upgrade --install --atomic`, and runs `post-deploy-kubectl` commands if supplied (`deploy / <release-name>`).
+- **Protected manual `workflow_dispatch` on the default branch**: Requires **both** `allow-manual-deploy: true` **and** a non-empty single-line `environment` name (`deploy` binds `environment: <name>`). GitHub Actions holds the `deploy` job in pending approval BEFORE acquiring `digitalocean-token` credentials, running `actions/setup-doctl`, executing Helm, or running `post-deploy-kubectl`. Consumer repository owners **must** configure repository protection rules on that GitHub Environment (required reviewers and default-branch deployment policy — verify with `python3 scripts/helm_environment.py verify --repo <owner>/<repo> --environment <name>`). Simply naming an unprotected or unprovisioned environment does not enforce approval.
+- **Same-repository `pull_request`**: Authorizes `mode=dry-run`, configures cluster credentials (without environment approval blocking PRs), executes `helm upgrade --install --dry-run --debug`, and skips `post-deploy-kubectl` (`deploy (dry-run) / <release-name>` — never reported as a real deployment). Fork pull requests (`fork == true` or mismatched head repository) are rejected before credential setup without broadening fork secret access.
+- **Blocked events and refs**: Feature-branch pushes, release/tag pushes, unopted or feature-branch `workflow_dispatch`, manual runs missing `environment`, `pull_request_target`, and unsupported events fail closed in `authorize` before `deploy`, `actions/setup-doctl`, `helm`, or `post-deploy-kubectl` can run.
 
 #### Inputs
 
@@ -503,6 +556,9 @@ Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Perform
 | `extra-helm-args` | string | no | `""` | Additional helm arguments |
 | `post-deploy-kubectl` | string | no | `""` | Post-deploy kubectl commands |
 | `extra-helm-repos` | string | no | `""` | Extra Helm repos (`name=url`) |
+| `runner-label` | string | no | `""` | Self-hosted runner label (empty uses `ubuntu-latest`) |
+| `allow-manual-deploy` | boolean | no | `false` | Explicitly allow default-branch `workflow_dispatch` real deploy when paired with a protected `environment` |
+| `environment` | string | no | `""` | Protected GitHub Environment name required for `workflow_dispatch` manual deployments |
 
 #### Secrets
 
@@ -510,7 +566,7 @@ Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Perform
 | --- | --- | --- |
 | `digitalocean-token` | **yes** | DigitalOcean PAT |
 
-#### Example
+#### Example (`@v2` automatic + PR dry-run)
 
 ```yaml
 name: deploy
@@ -521,7 +577,7 @@ on:
 
 jobs:
   deploy:
-    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
     with:
       release-name: my-app
       chart: ./chart
@@ -530,6 +586,47 @@ jobs:
     secrets:
       digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 ```
+
+#### Example (`@v2` protected manual dispatch)
+
+Provision GitHub Environment `production` with required reviewers and default-branch deployment policy first, then see [examples/helm-deploy-manual.yml](../examples/helm-deploy-manual.yml):
+
+```yaml
+name: deploy-manual
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
+    with:
+      release-name: my-app
+      chart: ./chart
+      namespace: my-app
+      values-file: values.yaml
+      allow-manual-deploy: true
+      environment: production
+    secrets:
+      digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+```
+
+#### Consumer Provisioning & Protection Contract (`workflow_dispatch`)
+
+1. Create the named GitHub Environment in the Consumer repository (**Settings -> Environments**).
+2. Enable **Required reviewers** (at least 1 reviewer).
+3. Restrict **Deployment branches and tags** to protected/selected branches covering only the default branch (for example `main`), not all branches or broad wildcards.
+4. Validate owner configuration using:
+
+```bash
+python3 scripts/helm_environment.py verify --repo <owner>/<repo> --environment <name> --default-branch main
+```
+
+#### Migrating `helm-deploy.yml` from `@v1` to `@v2`
+
+1. Keep existing callers on `@v1` until ready to adopt the default-branch enforcement contract.
+2. Check Caller workflow triggers: remove `workflow_dispatch`, non-default `push.branches`, and `pull_request_target` triggers from automatic `helm-deploy.yml@v2` Caller workflows, or move manual runs into a dedicated Caller workflow that sets `allow-manual-deploy: true` with a protected `environment`.
+3. Verify pull-request Caller workflows run on same-repository `pull_request` events for `deploy (dry-run)` validation without exposing secrets to forks.
+4. Update `uses:` references in the Caller workflow together to `nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2`.
 
 ---
 
@@ -570,6 +667,8 @@ jobs:
 
 ### sonar-scan.yml — SonarQube Scan + Quality Gate
 
+**Deprecated:** existing `v1` callers retain their behavior; do not add new Sonar integrations.
+
 Runs SonarQube analysis and waits for quality gate status. The workflow resolves a scanner URL, preflights it before scanning, validates `.scannerwork/report-task.txt`, and then runs the quality gate against the same scanner URL. A failed preflight, scan, report validation, or gate fails the job.
 
 #### Inputs
@@ -586,6 +685,9 @@ Runs SonarQube analysis and waits for quality gate status. The workflow resolves
 | `sonar-scanner-host-url` | string | no | `""` | Preferred non-secret scanner URL used by both scan and quality gate |
 | `sonar-public-base-url` | string | no | `""` | Optional public SonarQube UI/base URL for generated links; not used for scanner calls |
 | `runner-label` | string | no | `""` | Self-hosted runner label. Empty uses `ubuntu-latest` |
+
+> [!NOTE]
+> `pre-scan-command` runs inside `bash -eo pipefail -c`. Any intermediate command or pipeline failure aborts the job before SonarQube scanning starts. Callers that intentionally tolerate a non-zero preparation command should guard that command explicitly (for example, `my-tool || true`).
 
 #### Secrets
 
@@ -655,6 +757,8 @@ jobs:
 | `node-version` | no | `20` | Node.js version |
 | `package-manager` | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
 | `cache` | no | `true` | Enable dependency cache for selected manager |
+
+For `pnpm` and `yarn`, `actions/setup-node` installs Node.js, activates the requested package manager via `corepack enable` (with `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`), and then initializes dependency caching when `cache` is `true`.
 
 ### actions/setup-python
 

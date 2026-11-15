@@ -2,13 +2,27 @@
 # helm-deploy.yml — Reusable Helm deploy workflow
 # =============================================================================
 # Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster.
-# On pull requests: dry-run only.
-# On push to main: actual deploy with --atomic.
+# Authorization runs in an unprivileged preflight job before environment gating
+# or acquiring cluster credentials:
+# - push to the repository default branch: automatic real deploy with --atomic
+#   and optional post-deploy kubectl commands (`deploy / <release-name>`).
+# - workflow_dispatch on the repository default branch with explicit opt-in
+#   (`allow-manual-deploy: true`) and a configured GitHub Environment
+#   (`environment: <name>`): manual real deploy gated by the repository's
+#   GitHub Environment protection rules before credentials or Helm run.
+#   Consumers MUST configure protection rules (for example required reviewers
+#   and default-branch deployment policy) on that GitHub Environment.
+# - same-repository pull_request: dry-run only with --dry-run --debug and no
+#   post-deploy kubectl (`deploy (dry-run) / <release-name>`).
+# - feature-branch push, fork pull_request, unopted or feature-branch
+#   workflow_dispatch, missing environment on manual deploy,
+#   pull_request_target, and all other events: rejected before acquiring cloud
+#   credentials or running Helm / kubectl.
 #
 # Example Caller workflow:
 #   jobs:
 #     deploy:
-#       uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+#       uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
 #       with:
 #         release-name: my-app
 #         chart: ./chart
@@ -79,6 +93,16 @@ on:
         type: string
         required: false
         default: ""
+      allow-manual-deploy:
+        description: "Explicitly opt into default-branch workflow_dispatch manual deployment (requires a protected GitHub environment)."
+        type: boolean
+        required: false
+        default: false
+      environment:
+        description: "GitHub Environment name attached to the deploy job (required for workflow_dispatch; must have repository protection rules such as required reviewers)."
+        type: string
+        required: false
+        default: ""
     secrets:
       digitalocean-token:
         description: "DigitalOcean Personal Access Token."
@@ -88,51 +112,267 @@ permissions:
   contents: read
 
 jobs:
+  authorize:
+    name: ${{ github.event_name == 'pull_request' && format('authorize (dry-run) / {0}', inputs.release-name) || format('authorize / {0}', inputs.release-name) }}
+    runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
+    outputs:
+      mode: ${{ steps.authorize.outputs.mode }}
+      manual-deploy: ${{ steps.authorize.outputs.manual-deploy }}
+      acquire-credentials: ${{ steps.authorize.outputs.acquire-credentials }}
+      allow-post-deploy: ${{ steps.authorize.outputs.allow-post-deploy }}
+      environment: ${{ steps.authorize.outputs.environment }}
+    steps:
+      - name: Authorize deployment context
+        id: authorize
+        shell: bash
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_FULL: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          GITHUB_REPOSITORY_NAME: ${{ github.repository }}
+          PULL_REQUEST_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          PULL_REQUEST_HEAD_FORK: ${{ github.event.pull_request.head.repo.fork }}
+          ALLOW_MANUAL_DEPLOY: ${{ inputs.allow-manual-deploy }}
+          DEPLOY_ENVIRONMENT: ${{ inputs.environment }}
+        run: |
+          set -euo pipefail
+
+          case "${DEFAULT_BRANCH:-}" in
+            "")
+              echo "::error::Cannot authorize Helm deployment: repository default branch is empty."
+              exit 1
+              ;;
+            *$'\n'*|*$'\r'*)
+              echo "::error::Cannot authorize Helm deployment: repository default branch contains invalid characters."
+              exit 1
+              ;;
+          esac
+
+          case "${DEPLOY_ENVIRONMENT:-}" in
+            *$'\n'*|*$'\r'*)
+              echo "::error::Cannot authorize Helm deployment: environment name must be a single line."
+              exit 1
+              ;;
+          esac
+          trimmed_env="$(printf '%s' "${DEPLOY_ENVIRONMENT:-}" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+          if [[ -n "${DEPLOY_ENVIRONMENT:-}" ]] && [[ "${trimmed_env}" != "${DEPLOY_ENVIRONMENT}" ]]; then
+            echo "::error::Cannot authorize Helm deployment: environment name must not contain leading or trailing whitespace."
+            exit 1
+          fi
+
+          default_ref="refs/heads/${DEFAULT_BRANCH}"
+          mode=""
+          manual_deploy="false"
+          acquire_credentials="false"
+          allow_post_deploy="false"
+          resolved_env=""
+
+          case "${GITHUB_EVENT_NAME:-}" in
+            push)
+              if [[ "${GITHUB_REF_FULL:-}" != "${default_ref}" ]]; then
+                echo "::error::Automatic Helm deployment is only permitted for pushes to the default branch (${default_ref}); received ref '${GITHUB_REF_FULL:-}'."
+                exit 1
+              fi
+              mode="deploy"
+              manual_deploy="false"
+              acquire_credentials="true"
+              allow_post_deploy="true"
+              resolved_env="${trimmed_env}"
+              ;;
+            pull_request)
+              if [[ "${PULL_REQUEST_HEAD_FORK:-}" == "true" ]] \
+                || [[ -z "${PULL_REQUEST_HEAD_REPOSITORY:-}" ]] \
+                || [[ "${PULL_REQUEST_HEAD_REPOSITORY}" != "${GITHUB_REPOSITORY_NAME:-}" ]]; then
+                echo "::error::Helm pull_request dry-run refuses untrusted or fork pull request contexts (repository='${GITHUB_REPOSITORY_NAME:-}', head='${PULL_REQUEST_HEAD_REPOSITORY:-}', fork='${PULL_REQUEST_HEAD_FORK:-}')."
+                exit 1
+              fi
+              mode="dry-run"
+              manual_deploy="false"
+              acquire_credentials="true"
+              allow_post_deploy="false"
+              resolved_env=""
+              ;;
+            workflow_dispatch)
+              if [[ "${GITHUB_REF_FULL:-}" != "${default_ref}" ]]; then
+                echo "::error::Manual Helm deployment (workflow_dispatch) is only permitted from the default branch (${default_ref}); received ref '${GITHUB_REF_FULL:-}'."
+                exit 1
+              fi
+              if [[ "${ALLOW_MANUAL_DEPLOY:-false}" != "true" ]]; then
+                echo "::error::Manual Helm deployment (workflow_dispatch) requires explicit opt-in (allow-manual-deploy: true) and a protected GitHub environment; automatic deployment is limited to default-branch pushes (${default_ref})."
+                exit 1
+              fi
+              if [[ -z "${trimmed_env}" ]]; then
+                echo "::error::Manual Helm deployment (workflow_dispatch) requires a configured protected GitHub environment via the 'environment' input."
+                exit 1
+              fi
+              mode="deploy"
+              manual_deploy="true"
+              acquire_credentials="true"
+              allow_post_deploy="true"
+              resolved_env="${trimmed_env}"
+              ;;
+            pull_request_target|*)
+              echo "::error::Unsupported event '${GITHUB_EVENT_NAME:-}' for Helm deployment; only default-branch push (${default_ref}), opted-in protected default-branch workflow_dispatch, and same-repository pull_request dry-run are permitted."
+              exit 1
+              ;;
+          esac
+
+          {
+            printf 'mode=%s\n' "${mode}"
+            printf 'manual-deploy=%s\n' "${manual_deploy}"
+            printf 'acquire-credentials=%s\n' "${acquire_credentials}"
+            printf 'allow-post-deploy=%s\n' "${allow_post_deploy}"
+            printf 'environment=%s\n' "${resolved_env}"
+          } >> "${GITHUB_OUTPUT}"
+
+          {
+            printf 'HELM_DEPLOY_MODE=%s\n' "${mode}"
+            printf 'HELM_MANUAL_DEPLOY=%s\n' "${manual_deploy}"
+            printf 'HELM_ACQUIRE_CREDENTIALS=%s\n' "${acquire_credentials}"
+            printf 'HELM_ALLOW_POST_DEPLOY=%s\n' "${allow_post_deploy}"
+            printf 'HELM_ENVIRONMENT=%s\n' "${resolved_env}"
+          } >> "${GITHUB_ENV}"
+
+          echo "::notice::Authorized Helm workflow context: event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF_FULL:-} mode=${mode} manual=${manual_deploy} environment=${resolved_env:-none} post_deploy=${allow_post_deploy}."
+
   deploy:
     name: ${{ github.event_name == 'pull_request' && format('deploy (dry-run) / {0}', inputs.release-name) || format('deploy / {0}', inputs.release-name) }}
+    needs: authorize
+    if: needs.authorize.outputs.acquire-credentials == 'true' && (needs.authorize.outputs.mode == 'deploy' || needs.authorize.outputs.mode == 'dry-run')
     runs-on: ${{ inputs.runner-label != '' && inputs.runner-label || 'ubuntu-latest' }}
+    environment: ${{ needs.authorize.outputs.environment != '' && needs.authorize.outputs.environment || null }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
+      - name: Verify deployment authorization
+        id: verify_auth
+        shell: bash
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_FULL: ${{ github.ref }}
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          ALLOW_MANUAL_DEPLOY: ${{ inputs.allow-manual-deploy }}
+          INPUT_ENVIRONMENT: ${{ inputs.environment }}
+          AUTHORIZED_MODE: ${{ needs.authorize.outputs.mode }}
+          AUTHORIZED_MANUAL_DEPLOY: ${{ needs.authorize.outputs.manual-deploy }}
+          AUTHORIZED_ACQUIRE_CREDENTIALS: ${{ needs.authorize.outputs.acquire-credentials }}
+          AUTHORIZED_ALLOW_POST_DEPLOY: ${{ needs.authorize.outputs.allow-post-deploy }}
+          AUTHORIZED_ENVIRONMENT: ${{ needs.authorize.outputs.environment }}
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${DEFAULT_BRANCH:-}" ]]; then
+            echo "::error::Refusing to proceed: repository default branch is empty."
+            exit 1
+          fi
+          default_ref="refs/heads/${DEFAULT_BRANCH}"
+
+          if [[ "${AUTHORIZED_ACQUIRE_CREDENTIALS:-}" != "true" ]]; then
+            echo "::error::Refusing to acquire credentials without authorization."
+            exit 1
+          fi
+
+          case "${GITHUB_EVENT_NAME:-}:${AUTHORIZED_MODE:-}" in
+            push:deploy)
+              if [[ "${GITHUB_REF_FULL:-}" != "${default_ref}" ]] || [[ "${AUTHORIZED_MANUAL_DEPLOY:-}" != "false" ]]; then
+                echo "::error::Invalid automatic push authorization state (ref='${GITHUB_REF_FULL:-}', manual='${AUTHORIZED_MANUAL_DEPLOY:-}')."
+                exit 1
+              fi
+              ;;
+            pull_request:dry-run)
+              if [[ "${AUTHORIZED_ALLOW_POST_DEPLOY:-}" != "false" ]] || [[ "${AUTHORIZED_MANUAL_DEPLOY:-}" != "false" ]]; then
+                echo "::error::Invalid pull_request dry-run authorization state."
+                exit 1
+              fi
+              ;;
+            workflow_dispatch:deploy)
+              if [[ "${GITHUB_REF_FULL:-}" != "${default_ref}" ]] \
+                || [[ "${ALLOW_MANUAL_DEPLOY:-false}" != "true" ]] \
+                || [[ "${AUTHORIZED_MANUAL_DEPLOY:-}" != "true" ]] \
+                || [[ -z "${AUTHORIZED_ENVIRONMENT:-}" ]] \
+                || [[ "${AUTHORIZED_ENVIRONMENT:-}" != "${INPUT_ENVIRONMENT:-}" ]]; then
+                echo "::error::Invalid manual deployment authorization state (ref='${GITHUB_REF_FULL:-}', opt_in='${ALLOW_MANUAL_DEPLOY:-}', env='${AUTHORIZED_ENVIRONMENT:-}')."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error::Refusing unauthorized event/mode pair '${GITHUB_EVENT_NAME:-}:${AUTHORIZED_MODE:-}'."
+              exit 1
+              ;;
+          esac
+
+          {
+            printf 'mode=%s\n' "${AUTHORIZED_MODE}"
+            printf 'manual-deploy=%s\n' "${AUTHORIZED_MANUAL_DEPLOY}"
+            printf 'acquire-credentials=%s\n' "${AUTHORIZED_ACQUIRE_CREDENTIALS}"
+            printf 'allow-post-deploy=%s\n' "${AUTHORIZED_ALLOW_POST_DEPLOY}"
+            printf 'environment=%s\n' "${AUTHORIZED_ENVIRONMENT:-}"
+          } >> "${GITHUB_OUTPUT}"
+
       - name: Setup doctl + kubeconfig
-        uses: nandohdc/gh-pipelines/actions/setup-doctl@v1
+        if: steps.verify_auth.outputs.acquire-credentials == 'true' && (steps.verify_auth.outputs.mode == 'deploy' || steps.verify_auth.outputs.mode == 'dry-run')
+        uses: nandohdc/gh-pipelines/actions/setup-doctl@v2
         with:
           digitalocean-token: ${{ secrets.digitalocean-token }}
           cluster-id: ${{ inputs.cluster-id }}
 
       - name: Setup Helm + repos
-        uses: nandohdc/gh-pipelines/actions/setup-helm@v1
+        if: steps.verify_auth.outputs.mode == 'deploy' || steps.verify_auth.outputs.mode == 'dry-run'
+        uses: nandohdc/gh-pipelines/actions/setup-helm@v2
         with:
           extra-repos: ${{ inputs.extra-helm-repos }}
 
       - name: Deploy (or dry-run on PR)
+        if: steps.verify_auth.outputs.mode == 'deploy' || steps.verify_auth.outputs.mode == 'dry-run'
         shell: bash
+        env:
+          HELM_RELEASE_NAME: ${{ inputs.release-name }}
+          HELM_CHART: ${{ inputs.chart }}
+          HELM_NAMESPACE: ${{ inputs.namespace }}
+          HELM_VALUES_FILE: ${{ inputs.values-file }}
+          HELM_TIMEOUT: ${{ inputs.timeout }}
+          HELM_CHART_VERSION: ${{ inputs.chart-version }}
+          HELM_EXTRA_ARGS: ${{ inputs.extra-helm-args }}
+          HELM_DEPLOY_MODE: ${{ steps.verify_auth.outputs.mode }}
+          HELM_MANUAL_DEPLOY: ${{ steps.verify_auth.outputs.manual-deploy }}
+          HELM_ENVIRONMENT: ${{ steps.verify_auth.outputs.environment }}
         run: |
           set -euo pipefail
 
+          case "${HELM_DEPLOY_MODE:-}" in
+            deploy|dry-run) ;;
+            *)
+              echo "::error::Refusing to run Helm with unauthorized deploy mode '${HELM_DEPLOY_MODE:-}'."
+              exit 1
+              ;;
+          esac
+
           cmd=(
-            helm upgrade --install "${{ inputs.release-name }}" "${{ inputs.chart }}"
-            --namespace "${{ inputs.namespace }}"
+            helm upgrade --install "${HELM_RELEASE_NAME}" "${HELM_CHART}"
+            --namespace "${HELM_NAMESPACE}"
             --create-namespace
-            --values "${{ inputs.values-file }}"
+            --values "${HELM_VALUES_FILE}"
             --atomic
-            --timeout "${{ inputs.timeout }}"
+            --timeout "${HELM_TIMEOUT}"
           )
 
-          chart_version="${{ inputs.chart-version }}"
-          if [[ -n "${chart_version}" ]]; then
-            cmd+=(--version "${chart_version}")
+          if [[ -n "${HELM_CHART_VERSION}" ]]; then
+            cmd+=(--version "${HELM_CHART_VERSION}")
           fi
 
-          extra_args="${{ inputs.extra-helm-args }}"
-          if [[ -n "${extra_args}" ]]; then
-            read -ra extra <<< "${extra_args}"
+          if [[ -n "${HELM_EXTRA_ARGS}" ]]; then
+            read -ra extra <<< "${HELM_EXTRA_ARGS}"
             cmd+=("${extra[@]}")
           fi
 
-          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+          if [[ "${HELM_DEPLOY_MODE}" == "dry-run" ]]; then
             cmd+=(--dry-run --debug)
+            echo "::notice::Executing pull_request Helm dry-run (not a real deployment) for ${HELM_RELEASE_NAME}."
+          elif [[ "${HELM_MANUAL_DEPLOY:-false}" == "true" ]]; then
+            echo "::notice::Executing approved manual Helm deployment for ${HELM_RELEASE_NAME} (environment=${HELM_ENVIRONMENT:-})."
+          else
+            echo "::notice::Executing authorized real Helm deployment for ${HELM_RELEASE_NAME}."
           fi
 
           printf 'Running:'
@@ -143,12 +383,22 @@ jobs:
           "${cmd[@]}"
 
       - name: Post-deploy kubectl commands
-        if: github.event_name != 'pull_request' && inputs.post-deploy-kubectl != ''
+        if: steps.verify_auth.outputs.mode == 'deploy' && steps.verify_auth.outputs.allow-post-deploy == 'true' && inputs.post-deploy-kubectl != ''
         shell: bash
+        env:
+          HELM_DEPLOY_MODE: ${{ steps.verify_auth.outputs.mode }}
+          HELM_ALLOW_POST_DEPLOY: ${{ steps.verify_auth.outputs.allow-post-deploy }}
+          POST_DEPLOY_KUBECTL: ${{ inputs.post-deploy-kubectl }}
         run: |
           set -euo pipefail
+
+          if [[ "${HELM_DEPLOY_MODE:-}" != "deploy" ]] || [[ "${HELM_ALLOW_POST_DEPLOY:-}" != "true" ]]; then
+            echo "::error::Refusing to run post-deploy kubectl commands outside an authorized deployment (mode='${HELM_DEPLOY_MODE:-}', allow='${HELM_ALLOW_POST_DEPLOY:-}')."
+            exit 1
+          fi
+
           while IFS= read -r line; do
             [[ -z "${line}" ]] && continue
             echo "Running: ${line}"
             eval "${line}"
-          done <<< "${{ inputs.post-deploy-kubectl }}"
+          done <<< "${POST_DEPLOY_KUBECTL}"
