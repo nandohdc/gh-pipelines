@@ -67,14 +67,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Download unit coverage artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: fixture-multi-coverage-*
           path: coverage
           merge-multiple: false
 
       - name: Download integration coverage artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: fixture-multi-integration-*
           path: integration-coverage
