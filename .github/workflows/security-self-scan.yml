@@ -8,6 +8,10 @@
 name: security-self-scan
 
 on:
+  push:
+    branches:
+      - main
+      - "release/v[0-9]+"
   pull_request:
   schedule:
     - cron: "0 6 * * 1"

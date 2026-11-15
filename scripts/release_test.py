@@ -12,7 +12,59 @@ import unittest
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from scripts.release import ReleaseConfig, ReleaseError, ReleaseOutcome, ReleasePlan, run_release
+from scripts.release import (
+    REQUIRED_CI_CHECKS,
+    ReleaseConfig,
+    ReleaseError,
+    ReleaseOutcome,
+    ReleasePlan,
+    run_release,
+    verify_promotion_gate,
+)
+
+
+def _make_passing_ci_evidence(
+    repository: str,
+    sha: str,
+    *,
+    extra_workflow_runs: Optional[List[dict]] = None,
+    extra_check_runs: Optional[List[dict]] = None,
+) -> Tuple[List[dict], List[dict]]:
+    workflow_ids: Dict[str, int] = {}
+    workflow_runs: List[dict] = []
+    check_runs: List[dict] = []
+    next_run_id = 1000
+    for idx, (workflow_path, job_name) in enumerate(REQUIRED_CI_CHECKS, start=1):
+        if workflow_path not in workflow_ids:
+            workflow_ids[workflow_path] = next_run_id
+            workflow_runs.append(
+                {
+                    "id": next_run_id,
+                    "path": workflow_path,
+                    "head_sha": sha,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "event": "push",
+                }
+            )
+            next_run_id += 1
+        run_id = workflow_ids[workflow_path]
+        check_runs.append(
+            {
+                "id": 5000 + idx,
+                "name": job_name,
+                "head_sha": sha,
+                "status": "completed",
+                "conclusion": "success",
+                "app": {"slug": "github-actions"},
+                "details_url": f"https://github.com/{repository}/actions/runs/{run_id}/job/{7000 + idx}",
+            }
+        )
+    if extra_workflow_runs:
+        workflow_runs.extend(extra_workflow_runs)
+    if extra_check_runs:
+        check_runs.extend(extra_check_runs)
+    return workflow_runs, check_runs
 
 
 class FakeGitHub:
@@ -24,12 +76,23 @@ class FakeGitHub:
         commit_prs: Optional[Dict[str, List[dict]]] = None,
         pr_labels: Optional[Dict[int, List[str]]] = None,
         existing_releases: Optional[Dict[str, dict]] = None,
+        commit_check_runs: Optional[Dict[str, List[dict]]] = None,
+        commit_workflow_runs: Optional[Dict[str, List[dict]]] = None,
+        check_runs_sequence: Optional[Dict[str, List[Tuple[List[dict], List[dict]]]]] = None,
+        candidate_smoke_results: Optional[Dict[str, object]] = None,
         fail_on: Optional[str] = None,
     ) -> None:
         self.commit_prs = commit_prs or {}
         self.pr_labels = pr_labels or {}
         self.releases: Dict[str, dict] = dict(existing_releases or {})
+        self.commit_check_runs = commit_check_runs or {}
+        self.commit_workflow_runs = commit_workflow_runs or {}
+        self.check_runs_sequence = {
+            sha: list(seq) for sha, seq in (check_runs_sequence or {}).items()
+        }
+        self.candidate_smoke_results = dict(candidate_smoke_results or {})
         self.fail_on = fail_on
+        self.smoke_calls: List[str] = []
 
     def find_merged_pr_for_commit(
         self, repository: str, sha: str, base_ref: str = "main"
@@ -59,6 +122,52 @@ class FakeGitHub:
         if self.fail_on == "create_release":
             raise ReleaseError("simulated gh release create failure")
         self.releases[tag] = {"tag": tag, "target_sha": target_sha, "title": title}
+
+    def list_workflow_runs_for_sha(self, repository: str, sha: str) -> List[dict]:
+        if self.fail_on == "list_workflow_runs_for_sha":
+            raise ReleaseError("simulated gh api workflow runs failure")
+        if sha in self.commit_workflow_runs:
+            return list(self.commit_workflow_runs[sha])
+        if sha in self.check_runs_sequence and self.check_runs_sequence[sha]:
+            wf_runs, _ = self.check_runs_sequence[sha][0]
+            return list(wf_runs)
+        wf_runs, _ = _make_passing_ci_evidence(repository, sha)
+        return wf_runs
+
+    def list_commit_check_runs(self, repository: str, sha: str) -> List[dict]:
+        if self.fail_on == "list_commit_check_runs":
+            raise ReleaseError("simulated gh api check runs failure")
+        if sha in self.commit_check_runs:
+            return list(self.commit_check_runs[sha])
+        if sha in self.check_runs_sequence and self.check_runs_sequence[sha]:
+            _, ck_runs = self.check_runs_sequence[sha].pop(0)
+            return list(ck_runs)
+        _, ck_runs = _make_passing_ci_evidence(repository, sha)
+        return ck_runs
+
+    def ensure_candidate_smoke(
+        self,
+        candidate_sha: str,
+        *,
+        consumer_repo: str = "nandohdc/gh-pipelines-hosted-acceptance",
+    ) -> dict:
+        self.smoke_calls.append(candidate_sha)
+        if self.fail_on == "ensure_candidate_smoke":
+            raise ReleaseError("simulated candidate smoke outage")
+        if candidate_sha in self.candidate_smoke_results:
+            override = self.candidate_smoke_results[candidate_sha]
+            if isinstance(override, Exception):
+                raise override
+            assert isinstance(override, dict)
+            return dict(override)
+        return {
+            "status": "passed",
+            "candidate_sha": candidate_sha,
+            "consumer_repo": consumer_repo,
+            "run_id": 88001,
+            "run_url": f"https://github.com/{consumer_repo}/actions/runs/88001",
+            "reused": True,
+        }
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -1409,6 +1518,7 @@ class ReleaseModuleBehaviorTest(unittest.TestCase):
 _FAKE_GH_SCRIPT = """#!/usr/bin/env python3
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -1416,6 +1526,62 @@ state_path = Path(os.environ["FAKE_GH_STATE"])
 state = json.loads(state_path.read_text(encoding="utf-8"))
 args = sys.argv[1:]
 fail_cmd = state.get("fail_command")
+
+REQUIRED_CHECKS = [
+    (".github/workflows/lint.yml", "lint"),
+    (".github/workflows/security-self-scan.yml", "zizmor"),
+    (".github/workflows/security-self-scan.yml", "shellcheck"),
+    (".github/workflows/test-callers.yml", "test ci-go caller / lint"),
+    (".github/workflows/test-callers.yml", "test ci-go caller / test"),
+    (".github/workflows/test-callers.yml", "test ci-node caller / lint"),
+    (".github/workflows/test-callers.yml", "test ci-node caller / test"),
+    (".github/workflows/test-callers.yml", "test ci-python caller / lint"),
+    (".github/workflows/test-callers.yml", "test ci-python caller / test"),
+    (".github/workflows/test-callers.yml", "test ci-terraform caller / fmt"),
+    (".github/workflows/test-callers.yml", "test ci-terraform caller / validate"),
+    (".github/workflows/test-callers.yml", "test ci-terraform caller / plan"),
+    (".github/workflows/test-callers.yml", "test ci-with-sonar-go caller / ci / lint"),
+    (".github/workflows/test-callers.yml", "test ci-with-sonar-node caller / ci / lint"),
+    (".github/workflows/test-callers.yml", "test ci-with-sonar-python caller / ci / lint"),
+]
+
+
+def _default_ci(sha):
+    wf_ids = {}
+    wf_runs = []
+    ck_runs = []
+    next_id = 2000
+    for idx, (wf_path, job_name) in enumerate(REQUIRED_CHECKS, start=1):
+        if wf_path not in wf_ids:
+            wf_ids[wf_path] = next_id
+            wf_runs.append({
+                "id": next_id,
+                "path": wf_path,
+                "head_sha": sha,
+                "status": "completed",
+                "conclusion": "success",
+                "event": "push",
+            })
+            next_id += 1
+        rid = wf_ids[wf_path]
+        ck_runs.append({
+            "id": 6000 + idx,
+            "name": job_name,
+            "head_sha": sha,
+            "status": "completed",
+            "conclusion": "success",
+            "app": {"slug": "github-actions"},
+            "details_url": f"https://github.com/nandohdc/gh-pipelines/actions/runs/{rid}/job/{8000 + idx}",
+        })
+    return wf_runs, ck_runs
+
+
+def _git_commits():
+    res = subprocess.run(["git", "rev-list", "HEAD"], capture_output=True, text=True)
+    if res.returncode != 0:
+        return []
+    return [line.strip() for line in res.stdout.splitlines() if line.strip()]
+
 
 if args[:1] == ["api"]:
     endpoint = args[1]
@@ -1430,6 +1596,60 @@ if args[:1] == ["api"]:
         pr_num = endpoint.split("/issues/", 1)[1].split("/", 1)[0]
         labels = [{"name": name} for name in state.get("pr_labels", {}).get(pr_num, [])]
         print(json.dumps(labels))
+        sys.exit(0)
+    if "/check-runs" in endpoint:
+        sha = endpoint.split("/commits/", 1)[1].split("/", 1)[0]
+        custom = state.get("check_runs", {})
+        if sha in custom:
+            print(json.dumps({"check_runs": custom[sha]}))
+        else:
+            _, ck_runs = _default_ci(sha)
+            print(json.dumps({"check_runs": ck_runs}))
+        sys.exit(0)
+    if "/actions/runs?" in endpoint and "head_sha=" in endpoint:
+        sha = endpoint.split("head_sha=", 1)[1].split("&", 1)[0]
+        custom = state.get("workflow_runs", {})
+        if sha in custom:
+            print(json.dumps({"workflow_runs": custom[sha]}))
+        else:
+            wf_runs, _ = _default_ci(sha)
+            print(json.dumps({"workflow_runs": wf_runs}))
+        sys.exit(0)
+    if "/actions/workflows/candidate-smoke.yml/runs" in endpoint:
+        if "smoke_runs" in state:
+            print(json.dumps({"workflow_runs": state["smoke_runs"]}))
+        else:
+            commits = _git_commits()
+            runs = [
+                {
+                    "id": 99000 + idx,
+                    "status": "completed",
+                    "conclusion": "success",
+                    "event": "workflow_dispatch",
+                    "html_url": f"https://github.com/nandohdc/gh-pipelines-hosted-acceptance/actions/runs/{99000 + idx}",
+                }
+                for idx, _sha in enumerate(commits)
+            ]
+            print(json.dumps({"workflow_runs": runs}))
+        sys.exit(0)
+    if "/actions/runs/" in endpoint and "/jobs" in endpoint:
+        run_id = int(endpoint.split("/actions/runs/", 1)[1].split("/", 1)[0])
+        custom_jobs = state.get("smoke_jobs", {})
+        if str(run_id) in custom_jobs:
+            print(json.dumps({"jobs": custom_jobs[str(run_id)]}))
+        else:
+            commits = _git_commits()
+            idx = run_id - 99000
+            sha = commits[idx] if 0 <= idx < len(commits) else ""
+            jobs = [
+                {"name": "smoke-ci-go / lint", "status": "completed", "conclusion": "success"},
+                {"name": "smoke-ci-node / lint", "status": "completed", "conclusion": "success"},
+                {"name": "smoke-ci-python / lint", "status": "completed", "conclusion": "success"},
+                {"name": "smoke-ci-terraform / fmt", "status": "completed", "conclusion": "success"},
+                {"name": "smoke-direct-actions", "status": "completed", "conclusion": "success"},
+                {"name": f"candidate-smoke-result / {sha}", "status": "completed", "conclusion": "success"},
+            ]
+            print(json.dumps({"jobs": jobs}))
         sys.exit(0)
     print(f"unexpected gh api endpoint: {endpoint}", file=sys.stderr)
     sys.exit(2)
@@ -1488,6 +1708,7 @@ def _run_release_cli(
     env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
     env["FAKE_GH_STATE"] = str(state_path)
     env["GH_TOKEN"] = "test-token"
+    env["CANDIDATE_SMOKE_TOKEN"] = "test-smoke-token"
     env["GITHUB_REPOSITORY"] = "nandohdc/gh-pipelines"
     env["GITHUB_SHA"] = sha
     env["HEAD_COMMIT_MESSAGE"] = message
@@ -1796,6 +2017,294 @@ class ReleaseCliProcessTest(unittest.TestCase):
             self.assertIn("v1.0.1", combined)
             self.assertIn("v1.1.0", combined)
             self.assertNotIn("test-token", combined)
+            self.assertNotIn("test-smoke-token", combined)
+
+    def test_promotion_gate_blocks_when_required_check_fails_or_cancels_or_times_out(self) -> None:
+        for bad_conclusion in ("failure", "cancelled", "timed_out"):
+            with self.subTest(conclusion=bad_conclusion), tempfile.TemporaryDirectory() as tmp:
+                bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+                wf_runs, ck_runs = _make_passing_ci_evidence("nandohdc/gh-pipelines", sha)
+                ck_runs[0]["conclusion"] = bad_conclusion
+                github = FakeGitHub(
+                    pr_labels={401: ["release:patch"]},
+                    commit_workflow_runs={sha: wf_runs},
+                    commit_check_runs={sha: ck_runs},
+                )
+                with self.assertRaises(ReleaseError) as ctx:
+                    run_release(
+                        ReleaseConfig(
+                            repository="nandohdc/gh-pipelines",
+                            sha=sha,
+                            head_commit_message="fix: failing check (#401)",
+                            workdir=work,
+                            ci_gate_timeout_seconds=0,
+                            ci_gate_poll_seconds=0,
+                        ),
+                        github,
+                    )
+                self.assertIn(bad_conclusion, str(ctx.exception))
+                self.assertEqual(_try_remote_tags(bare), {})
+                self.assertEqual(github.releases, {})
+                self.assertEqual(github.smoke_calls, [])
+
+    def test_promotion_gate_blocks_when_check_is_missing_or_remains_queued_past_timeout(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+            wf_runs, ck_runs = _make_passing_ci_evidence("nandohdc/gh-pipelines", sha)
+            ck_runs[1]["status"] = "queued"
+            ck_runs[1]["conclusion"] = None
+            ck_runs_missing = ck_runs[:-1]
+            for label, runs in (("queued", ck_runs), ("missing", ck_runs_missing)):
+                with self.subTest(state=label):
+                    github = FakeGitHub(
+                        pr_labels={402: ["release:patch"]},
+                        commit_workflow_runs={sha: wf_runs},
+                        commit_check_runs={sha: runs},
+                    )
+                    with self.assertRaises(ReleaseError) as ctx:
+                        run_release(
+                            ReleaseConfig(
+                                repository="nandohdc/gh-pipelines",
+                                sha=sha,
+                                head_commit_message="fix: pending check (#402)",
+                                workdir=work,
+                                ci_gate_timeout_seconds=0,
+                                ci_gate_poll_seconds=0,
+                            ),
+                            github,
+                        )
+                    self.assertIn("incomplete or missing", str(ctx.exception))
+                    self.assertEqual(_try_remote_tags(bare), {})
+
+    def test_promotion_gate_blocks_on_wrong_sha_or_untrusted_app_or_wrong_workflow_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+            other_sha = "b" * 40
+            for scenario in ("wrong_sha", "untrusted_app", "wrong_workflow_path"):
+                with self.subTest(scenario=scenario):
+                    wf_runs, ck_runs = _make_passing_ci_evidence("nandohdc/gh-pipelines", sha)
+                    if scenario == "wrong_sha":
+                        ck_runs[0]["head_sha"] = other_sha
+                    elif scenario == "untrusted_app":
+                        ck_runs[0]["app"] = {"slug": "third-party-spoof-app"}
+                    elif scenario == "wrong_workflow_path":
+                        wf_runs[0]["path"] = ".github/workflows/spoof-lint.yml"
+                    github = FakeGitHub(
+                        pr_labels={403: ["release:patch"]},
+                        commit_workflow_runs={sha: wf_runs},
+                        commit_check_runs={sha: ck_runs},
+                    )
+                    with self.assertRaises(ReleaseError):
+                        run_release(
+                            ReleaseConfig(
+                                repository="nandohdc/gh-pipelines",
+                                sha=sha,
+                                head_commit_message="fix: spoofed check (#403)",
+                                workdir=work,
+                                ci_gate_timeout_seconds=0,
+                                ci_gate_poll_seconds=0,
+                            ),
+                            github,
+                        )
+                    self.assertEqual(_try_remote_tags(bare), {})
+
+    def test_promotion_gate_excludes_own_unfinished_release_check_without_self_deadlock(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+            release_run = {
+                "id": 9999,
+                "path": ".github/workflows/release.yml",
+                "head_sha": sha,
+                "status": "in_progress",
+                "conclusion": None,
+                "event": "push",
+            }
+            release_check = {
+                "id": 99991,
+                "name": "release",
+                "head_sha": sha,
+                "status": "in_progress",
+                "conclusion": None,
+                "app": {"slug": "github-actions"},
+                "details_url": f"https://github.com/nandohdc/gh-pipelines/actions/runs/9999/job/1",
+            }
+            wf_runs, ck_runs = _make_passing_ci_evidence(
+                "nandohdc/gh-pipelines",
+                sha,
+                extra_workflow_runs=[release_run],
+                extra_check_runs=[release_check],
+            )
+            github = FakeGitHub(
+                pr_labels={404: ["release:patch"]},
+                commit_workflow_runs={sha: wf_runs},
+                commit_check_runs={sha: ck_runs},
+            )
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=sha,
+                    head_commit_message="fix: self deadlock guard (#404)",
+                    workdir=work,
+                    ci_gate_timeout_seconds=1,
+                    ci_gate_poll_seconds=0,
+                ),
+                github,
+            )
+            self.assertEqual(outcome.next_tag, "v0.0.1")
+            self.assertEqual(_remote_tags(bare)["v0.0.1"], sha)
+
+    def test_promotion_gate_polls_until_pending_checks_succeed_then_promotes_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+            wf_pending, ck_pending = _make_passing_ci_evidence("nandohdc/gh-pipelines", sha)
+            ck_pending[0]["status"] = "in_progress"
+            ck_pending[0]["conclusion"] = None
+            wf_ready, ck_ready = _make_passing_ci_evidence("nandohdc/gh-pipelines", sha)
+            github = FakeGitHub(
+                pr_labels={405: ["release:patch"]},
+                check_runs_sequence={sha: [(wf_pending, ck_pending), (wf_ready, ck_ready)]},
+            )
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=sha,
+                    head_commit_message="fix: polling promotion (#405)",
+                    workdir=work,
+                    ci_gate_timeout_seconds=5,
+                    ci_gate_poll_seconds=0,
+                ),
+                github,
+            )
+            self.assertEqual(outcome.next_tag, "v0.0.1")
+            self.assertEqual(_remote_tags(bare)["v0.0.1"], sha)
+            self.assertEqual(github.smoke_calls, [sha])
+
+    def test_promotion_gate_blocks_when_candidate_smoke_fails_or_is_unprovisioned_or_wrong_sha(
+        self,
+    ) -> None:
+        other_sha = "c" * 40
+        for case_name, smoke_result in (
+            ("failed_outcome", {"status": "failed", "candidate_sha": None, "consumer_repo": "nandohdc/gh-pipelines-hosted-acceptance"}),
+            ("wrong_sha", {"status": "passed", "candidate_sha": other_sha, "consumer_repo": "nandohdc/gh-pipelines-hosted-acceptance", "run_id": 55}),
+            ("unprovisioned", ReleaseError("unprovisioned: Missing CANDIDATE_SMOKE_TOKEN")),
+        ):
+            with self.subTest(case=case_name), tempfile.TemporaryDirectory() as tmp:
+                bare, work, sha = _create_repo_with_bare_remote(Path(tmp))
+                github = FakeGitHub(
+                    pr_labels={406: ["release:patch"]},
+                    candidate_smoke_results={sha: smoke_result},
+                )
+                with self.assertRaises(ReleaseError):
+                    run_release(
+                        ReleaseConfig(
+                            repository="nandohdc/gh-pipelines",
+                            sha=sha,
+                            head_commit_message="fix: smoke gate block (#406)",
+                            workdir=work,
+                        ),
+                        github,
+                    )
+                self.assertEqual(_try_remote_tags(bare), {})
+
+    def test_blocked_earlier_commit_retains_intent_and_halts_later_commit_until_evidence_passes(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            bare, work, base_sha = _create_repo_with_bare_remote(Path(tmp))
+            _git(work, "tag", "v1.0.0", base_sha)
+            _git(work, "tag", "v1", base_sha)
+            _git(work, "push", "origin", "refs/tags/v1.0.0", "refs/tags/v1")
+
+            (work / "a.txt").write_text("a\n", encoding="utf-8")
+            _git(work, "add", "a.txt")
+            _git(work, "commit", "-m", "fix: blocked commit a (#410)")
+            a_sha = _git(work, "rev-parse", "HEAD")
+
+            (work / "b.txt").write_text("b\n", encoding="utf-8")
+            _git(work, "add", "b.txt")
+            _git(work, "commit", "-m", "feat: commit b (#411)")
+            _git(work, "push", "origin", "main")
+            b_sha = _git(work, "rev-parse", "HEAD")
+
+            github = FakeGitHub(
+                pr_labels={410: ["release:patch"], 411: ["release:minor"]},
+                candidate_smoke_results={
+                    a_sha: ReleaseError("simulated consumer outage"),
+                },
+            )
+            with self.assertRaises(ReleaseError):
+                run_release(
+                    ReleaseConfig(
+                        repository="nandohdc/gh-pipelines",
+                        sha=b_sha,
+                        head_commit_message="feat: commit b (#411)",
+                        workdir=work,
+                    ),
+                    github,
+                )
+            # Commit b must NOT overtake blocked commit a.
+            self.assertEqual(_remote_tags(bare), {"v1.0.0": base_sha, "v1": base_sha})
+
+            # Once commit a's consumer evidence succeeds, retrying head reconciles both in order.
+            github.candidate_smoke_results.pop(a_sha)
+            outcome = run_release(
+                ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=b_sha,
+                    head_commit_message="feat: commit b (#411)",
+                    workdir=work,
+                ),
+                github,
+            )
+            self.assertEqual(outcome.next_tag, "v1.1.0")
+            self.assertEqual(
+                _remote_tags(bare),
+                {"v1.0.0": base_sha, "v1.0.1": a_sha, "v1.1.0": b_sha, "v1": b_sha},
+            )
+
+    def test_cli_verify_gate_subcommand_reports_authorized_and_blocked_states(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, work, sha = _create_repo_with_bare_remote(root)
+            bin_dir, state_path = _write_fake_gh(root, {})
+            script_path = Path(__file__).resolve().parent / "release.py"
+            env = dict(os.environ)
+            env["PATH"] = f"{bin_dir}{os.pathsep}{env.get('PATH', '')}"
+            env["FAKE_GH_STATE"] = str(state_path)
+            env["GH_TOKEN"] = "test-token"
+            env["CANDIDATE_SMOKE_TOKEN"] = "test-smoke-token"
+            env["GITHUB_REPOSITORY"] = "nandohdc/gh-pipelines"
+
+            ok_proc = subprocess.run(
+                [sys.executable, str(script_path), "verify-gate", "--sha", sha],
+                cwd=work,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(ok_proc.returncode, 0, msg=ok_proc.stderr)
+            self.assertIn("status=authorized", ok_proc.stdout)
+
+            # Remove smoke runs so verify-gate blocks cleanly.
+            state = json.loads(state_path.read_text(encoding="utf-8"))
+            state["smoke_runs"] = []
+            state_path.write_text(json.dumps(state), encoding="utf-8")
+            bad_proc = subprocess.run(
+                [
+                    sys.executable,
+                    str(script_path),
+                    "verify-gate",
+                    "--sha",
+                    sha,
+                    "--no-dispatch-smoke",
+                ],
+                cwd=work,
+                env=env,
+                capture_output=True,
+                text=True,
+            )
+            self.assertEqual(bad_proc.returncode, 1)
+            self.assertIn("status=blocked", bad_proc.stdout + bad_proc.stderr)
 
 
 if __name__ == "__main__":

@@ -124,5 +124,5 @@ Unlike `Integration smoke` (which only lints downstream Canary Caller workflows 
 
 ### Extension Contract for Downstream Gates (`#186`–`#188`)
 
-- Release promotion (`#186`) consumes `find_verified_candidate_smoke_run` / `run_candidate_smoke` keyed on `candidate_sha` without introducing a second orchestration mechanism.
-- Guarded Helm policy rehearsals (`#187`–`#188`) reuse `nandohdc/gh-pipelines-hosted-acceptance` and its non-production fixture tree / workflow_dispatch contract rather than adding production clusters.
+- **Candidate promotion** (`#186`, implemented in `scripts/release.py` via `verify_promotion_gate` and `.github/workflows/release.yml`): requires all 15 exact-`head_sha` `github-actions` required checks (`lint.yml`, `security-self-scan.yml`, `test-callers.yml`, excluding `release.yml` itself) plus `find_verified_candidate_smoke_run` / `run_candidate_smoke` keyed strictly on the exact `candidate_sha` before publishing tags or moving floating major tags, and supports `workflow_dispatch` retry recovery.
+- Guarded Helm policy rehearsals (`#187`–`#188`) reuse `nandohdc/gh-pipelines-hosted-acceptance` and its non-production fixture tree / `workflow_dispatch` contract rather than adding production clusters.
