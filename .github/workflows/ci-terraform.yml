@@ -1,11 +1,20 @@
 # =============================================================================
 # ci-terraform.yml — Reusable Terraform CI pipeline
 # =============================================================================
-# Runs formatting, validation, planning, and optional IaC audit checks for
-# Terraform projects.
+# Runs formatting, validation, optional planning, and optional IaC audit checks
+# for Terraform projects.
 #
-# Cloud credentials are intentionally managed by the Caller workflow (environment variables or
-# OIDC) and are not configured by this reusable workflow.
+# Credential & runner constraints:
+#   workflow_call jobs run on separate runner VMs and do not inherit caller job
+#   steps, environment variables, or OIDC tokens. Use this reusable workflow for
+#   credential-free checks (set `run-plan: false` for fmt, `init -backend=false`,
+#   validate, and optional audit) or with a downstream `runner-label` whose
+#   runner preconfigures ambient identity.
+#
+#   When `terraform init` (remote backend) or `terraform plan` needs cloud OIDC
+#   or credentials, compose a caller-owned job with `permissions: id-token: write`,
+#   run your cloud auth step in that same job, and invoke
+#   `nandohdc/gh-pipelines/actions/setup-terraform@v1` there.
 #
 # Example Caller workflow:
 #   jobs:
@@ -14,6 +23,7 @@
 #       with:
 #         terraform-version: "1.9.8"
 #         working-directory: "infra"
+#         run-plan: false
 # =============================================================================
 
 name: ci-terraform

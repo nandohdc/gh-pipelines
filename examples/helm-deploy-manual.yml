@@ -1,0 +1,35 @@
+# =============================================================================
+# Example: Protected manual Helm deploy Caller workflow (#188)
+# =============================================================================
+# Copy this Caller workflow to your Workflow consumer repository at
+# .github/workflows/deploy-manual.yml when you intentionally want to allow
+# manually triggered deployments via `workflow_dispatch`.
+#
+# Required repository owner provisioning before enabling manual deploys:
+# 1. Create the named GitHub Environment (for example `production`) under
+#    Settings -> Environments.
+# 2. Configure protection rules on that environment, including at least one
+#    Required reviewer.
+# 3. Restrict deployment branches to the repository default branch (`main`).
+#    An unprotected or unprovisioned environment does NOT enforce manual
+#    approval.
+# =============================================================================
+
+name: deploy-manual
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
+    with:
+      release-name: my-app
+      chart: ./apps/my-app/chart
+      namespace: my-app
+      values-file: apps/my-app/values.yaml
+      cluster-id: "adc9fd65-81f6-46f3-b3d1-6112298faf0a"
+      allow-manual-deploy: true
+      environment: production
+    secrets:
+      digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}

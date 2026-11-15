@@ -8,9 +8,14 @@ SonarQube scanner connectivity.
 
 from __future__ import annotations
 
+import os
 import re
+import subprocess
 import sys
+import tempfile
 from pathlib import Path
+
+import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
@@ -23,10 +28,8 @@ from scripts.contract_lib import (
     step_block,
 )
 WORKFLOW = ROOT / ".github" / "workflows" / "sonar-scan.yml"
-REPOSITORY_WORKFLOW = ROOT / ".github" / "workflows" / "sonar.yml"
 EXAMPLE = ROOT / "examples" / "sonar-scan.yml"
 LINT_WORKFLOW = ROOT / ".github" / "workflows" / "lint.yml"
-PROJECT = ROOT / "sonar-project.properties"
 
 
 def test_workflow_url_contract() -> None:
@@ -199,42 +202,16 @@ def test_external_actions_are_pinned() -> None:
     artifacts = step_block(text, "Download coverage artifacts")
     for expected in (
         "if: inputs.coverage-artifact-pattern != ''",
-        "uses: actions/download-artifact@v7",
         "pattern: ${{ inputs.coverage-artifact-pattern }}",
         "path: ${{ inputs.coverage-artifact-path }}",
         "merge-multiple: false",
     ):
         assert_contains(artifacts, expected, f"coverage artifact handoff missing: {expected}")
-
-
-def test_repository_sonar_workflow_uses_public_scanner_secret() -> None:
-    workflow = read(REPOSITORY_WORKFLOW)
-    sonar_project = read(PROJECT)
-
-    assert_contains(sonar_project, "sonar.projectKey=nandohdc_gh-pipelines_7ee6bd5a-8a54-4996-a00d-668315012f38", "repo Sonar project key must stay stable")
-    assert_contains(sonar_project, "sonar.projectName=gh-pipelines", "repo Sonar project name must be set")
-    assert_contains(sonar_project, "sonar.sources=.github,actions,examples,scripts,docs,README.md,SECURITY.md,CHANGELOG.md,AGENTS.md,CLAUDE.md", "repo Sonar sources should be scoped to active library paths")
-    assert_contains(sonar_project, "sonar.tests=tests,scripts", "repo Sonar tests should be classified separately")
-    assert_contains(sonar_project, "sonar.test.inclusions=scripts/*_test.py", "contract tests must be classified as test code, not coverage-eligible sources")
-    assert_contains(sonar_project, "sonar.python.version=3.12", "repo Sonar config must pin the analyzed Python version for precise analysis")
-    assert_contains(sonar_project, "sonar.python.coverage.reportPaths=coverage.xml", "repo Sonar config must set coverage report path for contract_lib coverage")
-    assert_contains(sonar_project, ",scripts/*_test.py", "contract tests must be excluded from Sonar sources")
-    assert_contains(sonar_project, "**/node_modules/**", "repo Sonar exclusions should avoid dependency directories")
-
-    assert_contains(workflow, "name: sonar", "missing internal Sonar workflow")
-    assert_contains(workflow, "pull_request:", "internal Sonar workflow must run on PRs")
-    assert_contains(workflow, "if: github.actor != 'dependabot[bot]'", "internal Sonar workflow must skip Dependabot PRs which lack secrets")
-    assert_contains(workflow, "branches:\n      - main", "internal Sonar workflow must target main")
-    assert_contains(workflow, "uses: ./.github/workflows/sonar-scan.yml", "internal Sonar workflow should reuse the library workflow")
-    assert_not_contains(workflow, "svc.cluster.local", "internal Sonar workflow must not hardcode the in-cluster URL, which only resolves on ARC runners")
-    assert_contains(workflow, "runner-label: ${{ vars.RUNNER_LABEL }}", "internal Sonar workflow must use the repo runner variable")
-    assert_contains(workflow, 'pre-scan-python-version: "3.12"', "internal Sonar workflow must install Python for coverage on minimal ARC runners")
-    assert_contains(workflow, "SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}", "internal Sonar workflow must forward the Sonar token secret")
-    assert_contains(workflow, "SONAR_SCANNER_HOST_URL: ${{ secrets.SONAR_SCANNER_HOST_URL }}", "internal Sonar workflow must forward the preferred scanner URL secret")
-    assert_contains(workflow, "SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}", "internal Sonar workflow must forward the public scanner URL secret so scans work on GitHub-hosted runners")
-    assert_contains(workflow, "pre-scan-command:", "internal Sonar workflow must pass the pre-scan command")
-    assert_contains(workflow, "pytest scripts/contract_lib_test.py", "internal Sonar workflow must run contract_lib unit tests for coverage")
-    assert_not_contains(workflow, "trycloudflare.com", "internal Sonar workflow must not use disposable Quick Tunnel URLs")
+    assert re.search(
+        r"uses: actions/download-artifact@v\d+\s*$",
+        artifacts,
+        re.MULTILINE,
+    ), "coverage artifact handoff missing tag-pinned actions/download-artifact@v<N>"
 
 
 def test_docs_example_and_lint_contract_are_updated() -> None:
@@ -261,6 +238,85 @@ def test_docs_example_and_lint_contract_are_updated() -> None:
     )
 
 
+def test_pre_scan_command_runs_with_strict_error_and_pipefail_semantics() -> None:
+    text = read(WORKFLOW)
+    pre_scan = step_block(text, "Pre-scan command")
+    assert_contains(
+        pre_scan,
+        'bash -eo pipefail -c "${PRE_SCAN_COMMAND}"',
+        "Pre-scan command must run with bash -eo pipefail -c",
+    )
+    assert_not_contains(
+        pre_scan,
+        'bash -c "${PRE_SCAN_COMMAND}"',
+        "Pre-scan command must not drop -eo pipefail via plain bash -c",
+    )
+
+    workflow_data = yaml.safe_load(text)
+    jobs = workflow_data["jobs"]
+    assert len(jobs) == 1
+    steps = next(iter(jobs.values()))["steps"]
+    pre_scan_idx = next(i for i, step in enumerate(steps) if step.get("name") == "Pre-scan command")
+    sonar_scan_idx = next(
+        i
+        for i, step in enumerate(steps)
+        if "SonarSource/sonarqube-scan-action" in str(step.get("uses", ""))
+    )
+    assert pre_scan_idx < sonar_scan_idx, "Pre-scan command must run before SonarQube scan step"
+
+    run_script = steps[pre_scan_idx]["run"]
+    assert steps[pre_scan_idx].get("if") == "inputs.pre-scan-command != ''"
+
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        base_env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin")}
+
+        proc_mid_fail = subprocess.run(
+            ["bash", "-c", run_script],
+            cwd=tmp_dir,
+            env={**base_env, "PRE_SCAN_COMMAND": "false; echo trailing-success"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc_mid_fail.returncode != 0, "Intermediate command failure must fail pre-scan hook"
+        assert "trailing-success" not in proc_mid_fail.stdout, (
+            "Trailing command must not run after intermediate failure"
+        )
+
+        proc_pipe_fail = subprocess.run(
+            ["bash", "-c", run_script],
+            cwd=tmp_dir,
+            env={**base_env, "PRE_SCAN_COMMAND": "false | true"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc_pipe_fail.returncode != 0, "Pipeline failure must fail pre-scan hook under pipefail"
+
+        proc_ok = subprocess.run(
+            ["bash", "-c", run_script],
+            cwd=tmp_dir,
+            env={**base_env, "PRE_SCAN_COMMAND": "echo step-one > hook.txt && echo step-two >> hook.txt"},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert proc_ok.returncode == 0, f"Successful multi-command hook failed: {proc_ok.stderr}"
+        assert (Path(tmp_dir) / "hook.txt").read_text(encoding="utf-8") == "step-one\nstep-two\n"
+
+    usage = read(ROOT / "docs" / "USAGE.md")
+    assert_contains(
+        usage,
+        "bash -eo pipefail -c",
+        "docs/USAGE.md must document strict pre-scan-command shell semantics",
+    )
+    assert_contains(
+        usage,
+        "|| true",
+        "docs/USAGE.md must explain how callers that intentionally tolerate failures should guard commands",
+    )
+
+
 def main() -> None:
     test_workflow_url_contract()
     test_preflight_runs_before_scan_and_distinguishes_failures()
@@ -270,8 +326,8 @@ def main() -> None:
     test_runner_label_fork_safety_and_permissions()
     test_no_hardcoded_urls_or_quick_tunnel_active_config()
     test_external_actions_are_pinned()
-    test_repository_sonar_workflow_uses_public_scanner_secret()
     test_docs_example_and_lint_contract_are_updated()
+    test_pre_scan_command_runs_with_strict_error_and_pipefail_semantics()
     print("sonar_scan_workflow_contract_test: ok")
 
 

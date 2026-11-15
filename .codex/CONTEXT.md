@@ -46,8 +46,10 @@
   - `.github/workflows/docker-build.yml`
   - `.github/workflows/docker-release.yml`
   - `.github/workflows/helm-deploy.yml`
+    - `helm-deploy.yml@v2` (`#187`, `#188`) splits an unprivileged `authorize` preflight job (no secrets) from `deploy`: automatic real deploy on default-branch `push`, protected manual `workflow_dispatch` on default branch only when `allow-manual-deploy: true` AND `environment: <protected-env>` are supplied (binding `environment:` so repository protection rules pause before credential setup, Helm, and `post-deploy-kubectl`), `--dry-run --debug` (no `post-deploy-kubectl`) on same-repo `pull_request`, and fail-closed rejection for feature pushes, fork PRs, `pull_request_target`, unopted/unconfigured `workflow_dispatch`, and unsupported events; guarded by `scripts/helm_deploy_workflow_contract_test.py`, `scripts/helm_environment.py`, `examples/helm-deploy-manual.yml`, and hosted `candidate_smoke`
   - `.github/workflows/security-scan.yml`
   - `.github/workflows/sonar-scan.yml`
+    - executes `pre-scan-command` under `bash -eo pipefail -c` so intermediate command and pipeline errors fail before SonarQube scanning starts
 - Internal repository workflows:
   - `.github/workflows/lint.yml`
   - `.github/workflows/test-callers.yml`
@@ -73,17 +75,23 @@
   - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-{go,node,python}.yml`, and `ci-terraform.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python,terraform}`
 - Internal release automation workflow:
-  - triggers on `push` to `main`
+  - `.github/workflows/release.yml` triggers on `push` to `main` and `release/v[0-9]+` maintenance branches plus `workflow_dispatch` retry recovery, with least-privilege `actions: read`, `checks: read`, `contents: write`, and `pull-requests: read` permissions, delegating execution to `scripts/release.py` (behavior-tested by `scripts/release_test.py`)
   - resolves release labels from the merged PR associated with `GITHUB_SHA`
-  - derives semver bump from labels `release:patch|release:minor|release:major`
+  - derives semver bump from labels `release:patch|release:minor|release:major` within isolated Major lineages (`ADR-0001`)
   - no-ops when no release label exists on the associated merged PR
-  - serializes executions via `concurrency` (`release-main`)
-  - handles pre-existing computed tags idempotently when they already point to the target SHA
-  - creates immutable `vX.Y.Z`, force-moves `v1`, and creates GitHub release notes
+  - serializes executions via `concurrency` (`release-${{ github.ref_name }}`)
+  - reconciles first-parent commits in commit order from the branch lineage's latest reachable Exact release tag (resuming an incomplete anchor if needed) so rapid bursts, cancelled queued runs, and trailing unlabeled merges never drop or overtake earlier labeled merges, halting visibly on any blocked commit
+  - gates each candidate commit through `verify_promotion_gate` (`REQUIRED_CI_CHECKS` 15 exact-`head_sha` `github-actions` jobs across `lint.yml`, `security-self-scan.yml`, and `test-callers.yml` excluding `release.yml`, plus correlated `Candidate smoke` evidence in `nandohdc/gh-pipelines-hosted-acceptance`), logging `Release promotion gate: candidate=... status=authorized|blocked ...` and providing `scripts/release.py verify-gate`
+  - preserves each commit's chosen Exact release tag across retries and partial failures (`exact_tag` -> `floating_tag` -> `github_release`), treats completed retries as no-ops, refuses backward floating-tag movement on stale retries, and fails visibly on conflicting immutable tags or release target SHAs
+  - creates immutable `vX.Y.Z`, updates the matching `v<N>` Floating major tag forward-only within lineage `N`, and creates GitHub release notes
 - Internal workflow security self-scan:
   - `.github/workflows/security-self-scan.yml`
+  - triggers on `push` to `main` / `release/v[0-9]+`, `pull_request`, weekly schedule, and `workflow_dispatch`
   - runs `zizmor` high-severity gate plus `actionlint -shellcheck=shellcheck` checks
-  - produces required status-check contexts `zizmor` and `shellcheck` on pull requests
+  - produces required status-check contexts `zizmor` and `shellcheck` on pull requests and push candidates
+- Node clean-runner package-manager contract (`actions/setup-node/action.yml`, `.github/workflows/ci-node.yml`):
+  - initializes Node without cache first, enables `corepack enable` with `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` for `pnpm`/`yarn`, and only then configures dependency cache so clean runners without preinstalled `pnpm`/`yarn` succeed
+  - behavior-guarded by `scripts/node_setup_workflow_contract_test.py` and hosted fixtures `tests/fixtures/{node,node-pnpm,node-yarn}` in `test-callers.yml`
 - Internal Dependabot auto-merge workflow:
   - `.github/workflows/dependabot-auto-merge.yml`
   - runs on `pull_request_target` and is scoped to Dependabot PRs targeting `main`
@@ -91,8 +99,11 @@
 - Internal integration drift workflow:
   - `.github/workflows/integration-smoke.yml`
   - runs on nightly schedule (`0 7 * * *`) and `workflow_dispatch`
-  - checks active canary consumer `nandohdc/financial-events-ingestion-api` by rewriting `nandohdc/gh-pipelines` refs to `@main` and linting with `actionlint`
-  - opens a `drift`- or `sonar-missing`-labeled issue in this repository on failure
+  - checks active canary consumer `nandohdc/financial-events-ingestion-api` using `scripts/canary_probe.py` (YAML-aware active `uses:` inspection and `@main` rewrite ignoring comments/sample strings, plus `actionlint`; static lint does not establish remote workflow input compatibility, which requires executed smoke)
+  - opens a `drift`-labeled issue in this repository on failure; Sonar presence is not enforced (`enforce_sonar=False`; active Sonar invocations are still counted/rewritten and `.github/SONAR_EXEMPT` is honored under opt-in enforcement)
+- Synthetic consumer candidate smoke (`#185`):
+  - `scripts/candidate_smoke.py` (tested by `scripts/candidate_smoke_test.py` in `lint.yml`) executes candidate reusable workflows and affected composite actions on GitHub-hosted `ubuntu-latest` inside `nandohdc/gh-pipelines-hosted-acceptance` using ephemeral `smoke/candidate-<sha12>-<request_id>` branches and correlated `candidate-smoke-result / <candidate_sha>` checks without moving production `@v1`/`@v2` tags
+  - supports `ordinary`, `nonexistent-input`, and `action-regression` scenarios plus fail-closed `unprovisioned` handling when `CANDIDATE_SMOKE_TOKEN` / `INTEGRATION_PAT` is unavailable
 - Docker build hardening surface:
   - `.github/workflows/docker-build.yml` supports optional `generate-sbom`, `generate-provenance`, `sign-image`, and `attest-sbom` inputs (default `false`)
   - `actions/supply-chain-attest/action.yml` centralizes shared SBOM/signing/provenance/attestation logic
@@ -105,6 +116,7 @@
   - `actions/setup-node`
   - `actions/setup-python`
   - `actions/setup-terraform`
+    - caller-composed Terraform jobs requiring cloud OIDC/credentials run auth and `actions/setup-terraform` in the same job (`workflow_call` jobs in `ci-terraform.yml` do not inherit caller steps or env; guarded by `scripts/terraform_documentation_contract_test.py` and `test-setup-terraform-caller-composed`)
   - `actions/setup-doctl`
   - `actions/setup-helm`
   - `actions/docker-meta`
@@ -119,6 +131,8 @@
 ## Non-negotiable decisions
 
 - This repo is not an app runtime; it is shared pipeline infrastructure.
+- Repository-owned automation runs on GitHub-hosted `ubuntu-latest`; downstream consumers retain runner selection.
+- Sonar workflows are deprecated; preserve existing `v1` behavior during migration.
 - Reusable workflow and action names stay in kebab-case.
 - `workflow_call` interfaces are stable contracts for consumer repos.
 - Internal-only workflows (like self-CI linting) are not exposed via `workflow_call`.

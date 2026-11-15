@@ -30,6 +30,11 @@ DOCS = [README, USAGE, INTEGRATION_CONSUMERS]
 LOCAL_KIND_SCANNER_URL = "http://sonarqube.sonarqube.svc.cluster.local:9000"
 
 
+def test_sonar_guidance_is_deprecated() -> None:
+    for path in DOCS + EXAMPLES:
+        assert_contains(read(path).lower(), "deprecated", f"{path} must mark Sonar guidance deprecated")
+
+
 def test_docs_distinguish_scanner_public_legacy_and_runner_contract() -> None:
     for path in DOCS:
         text = read(path)
@@ -168,6 +173,7 @@ def test_lint_workflow_runs_sonar_coverage_tests() -> None:
 
 
 def main() -> None:
+    test_sonar_guidance_is_deprecated()
     test_docs_distinguish_scanner_public_legacy_and_runner_contract()
     test_docs_state_local_arc_queue_and_fail_fast_behavior()
     test_usage_input_and_secret_tables_include_new_contract()
