@@ -90,6 +90,9 @@ No release label means no release action (workflow exits successfully without ta
 #### Retries, partial failures, and recovery
 
 - Every `release.yml` execution prints a `Release recovery summary:` line containing the **Release intent** (`PR#<n>@<sha>`), target `Major lineage`, chosen `Exact release tag`, completed effects (`exact_tag`, `floating_tag`, `github_release`), and retry outcome (`published:published`, `published:resumed`, or `noop:already_released`) without exposing credentials.
+- Each run reconciles pending first-parent commits in commit order from the branch lineage's latest reachable `Exact release tag` up to `GITHUB_SHA`, publishing one release per labeled merge without coalescing mixed `patch`, `minor`, or `major` intents.
+- Unlabeled merges create no release of their own and still reconcile any earlier pending labeled commits left behind by cancelled or replaced runs.
+- If an earlier commit is blocked or fails, reconciliation logs `Release reconciliation blocked:` and halts without overtaking it with newer commits; once the blocker is fixed, re-running `release.yml` on the branch head completes the blocked commit and then continues in order.
 - Retrying an already-completed release is a safe no-op even if PR labels are modified afterward.
 - Retrying after an interruption (for example after pushing `vX.Y.Z` or moving `v<N>` but before creating the GitHub Release) reuses compatible existing tags/releases and completes the original `vX.Y.Z` without allocating another version.
 - Stale retries of older releases never move a lineage's `Floating major tag` backward past a newer descendant commit (`floating_tag:kept_newer`).
