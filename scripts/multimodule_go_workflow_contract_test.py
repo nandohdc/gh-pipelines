@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -105,11 +106,15 @@ def test_sonar_scan_can_consume_caller_coverage_artifacts() -> None:
     for expected in (
         "coverage-artifact-pattern:",
         "coverage-artifact-path:",
-        "uses: actions/download-artifact@v7",
         "pattern: ${{ inputs.coverage-artifact-pattern }}",
         "path: ${{ inputs.coverage-artifact-path }}",
     ):
         assert_contains(workflow, expected, f"sonar coverage-artifact contract missing: {expected}")
+    assert re.search(
+        r"uses: actions/download-artifact@v\d+\s*$",
+        workflow,
+        re.MULTILINE,
+    ), "sonar coverage-artifact contract missing tag-pinned actions/download-artifact@v<N>"
 
     assert_order(
         workflow,

@@ -202,12 +202,16 @@ def test_external_actions_are_pinned() -> None:
     artifacts = step_block(text, "Download coverage artifacts")
     for expected in (
         "if: inputs.coverage-artifact-pattern != ''",
-        "uses: actions/download-artifact@v7",
         "pattern: ${{ inputs.coverage-artifact-pattern }}",
         "path: ${{ inputs.coverage-artifact-path }}",
         "merge-multiple: false",
     ):
         assert_contains(artifacts, expected, f"coverage artifact handoff missing: {expected}")
+    assert re.search(
+        r"uses: actions/download-artifact@v\d+\s*$",
+        artifacts,
+        re.MULTILINE,
+    ), "coverage artifact handoff missing tag-pinned actions/download-artifact@v<N>"
 
 
 def test_docs_example_and_lint_contract_are_updated() -> None:
