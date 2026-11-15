@@ -843,10 +843,12 @@ def _run_release_cli(
     env["GITHUB_REPOSITORY"] = "nandohdc/gh-pipelines"
     env["GITHUB_SHA"] = sha
     env["HEAD_COMMIT_MESSAGE"] = message
-    if base_ref is not None:
-        env["GITHUB_REF_NAME"] = base_ref
+    env["GITHUB_REF_NAME"] = base_ref if base_ref is not None else "main"
+    env.pop("GITHUB_EVENT_BEFORE", None)
     if event_created is not None:
         env["GITHUB_EVENT_CREATED"] = event_created
+    else:
+        env.pop("GITHUB_EVENT_CREATED", None)
     return subprocess.run(
         [sys.executable, str(release_script), "run"],
         cwd=work,
