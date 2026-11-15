@@ -36,11 +36,14 @@ Integration smoke is a parse-and-lint drift probe against each Canary consumer
 repository. It does not execute a consumer pipeline. `integration-smoke.yml`:
 
 1. Clone the selected Canary consumer repository at `main`.
-2. Rewrite any `uses: nandohdc/gh-pipelines/.github/workflows/...@<ref>` references to `@main`.
+2. Parse workflow YAML via `scripts/canary_probe.py` (`PyYAML`) to verify active `nandohdc/gh-pipelines/...` `uses:` invocations at job and step level (ignoring commented lines and unrelated string values) and rewrite only active references to `@main`.
 3. Run `actionlint` on the rewritten workflow set.
 4. On failure, open a `drift` issue in `gh-pipelines` with idempotent title-based deduplication.
 
-Sonar references and `.github/SONAR_EXEMPT` are no longer inspected. Both scheduled and manual probes run on GitHub-hosted `ubuntu-latest`; the deprecated manual `runner-label` input is ignored.
+Active deprecated Sonar workflow invocations (`ci-with-sonar-*.yml`, `sonar-scan.yml`) are still detected and rewritten accurately, though missing Sonar workflows do not fail the deprecation-era canary unless opt-in `--enforce-sonar` is passed (in which case `.github/SONAR_EXEMPT` waives enforcement). Both scheduled and manual probes run on GitHub-hosted `ubuntu-latest`; the deprecated manual `runner-label` input is ignored.
+
+> [!NOTE]
+> Static parse-and-lint and presence checks verify Caller workflow YAML syntax and active `gh-pipelines` references; they do **not** establish remote workflow input compatibility (`workflow_call` input/output schema or runtime behavior), which is caught by executed candidate smoke.
 
 `@main` is a validation reference used only by integration smoke. It is not a
 production onboarding reference for Canary consumer repositories or other
