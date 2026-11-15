@@ -5,6 +5,8 @@ This document tracks the real **Canary consumer repositories** used by
 opted-in Workflow consumer used for monitoring; it is not a different product
 or execution mode.
 
+Sonar is deprecated across the environment. Existing `v1` workflows remain available while consumers migrate; the compatibility details below are not onboarding guidance.
+
 ## Current Canaries
 
 | Canary consumer repository | Language | Why this canary |
@@ -26,8 +28,7 @@ unique unit and integration coverage artifact names. When SonarQube needs the
 aggregate unit coverage report, a `sonar-scan.yml` Workflow invocation passes
 the unique artifact prefix through `coverage-artifact-pattern` and merges the
 downloaded profiles in `pre-scan-command`. This preserves isolation until the
-one aggregation step owned by the Workflow consumer and lets integration smoke detect the Sonar
-workflow reference.
+one aggregation step owned by the Workflow consumer. The deprecated Sonar integration is no longer required by integration smoke.
 
 ## Smoke Implementation (Current)
 
@@ -36,14 +37,10 @@ repository. It does not execute a consumer pipeline. `integration-smoke.yml`:
 
 1. Clone the selected Canary consumer repository at `main`.
 2. Rewrite any `uses: nandohdc/gh-pipelines/.github/workflows/...@<ref>` references to `@main`.
-3. Require at least one Sonar integration path:
-   - `sonar-scan.yml`, or
-   - a `ci-with-sonar-<lang>.yml` bundle, or
-   - `.github/SONAR_EXEMPT` marker file at repo root.
-4. Run `actionlint` on the rewritten workflow set.
-5. On failure, open an issue in `gh-pipelines` with idempotent title-based dedup:
-   - `sonar-missing` label for missing Sonar coverage
-   - `drift` label for all other parse/lint failures
+3. Run `actionlint` on the rewritten workflow set.
+4. On failure, open a `drift` issue in `gh-pipelines` with idempotent title-based deduplication.
+
+Sonar references and `.github/SONAR_EXEMPT` are no longer inspected. Both scheduled and manual probes run on GitHub-hosted `ubuntu-latest`; the deprecated manual `runner-label` input is ignored.
 
 `@main` is a validation reference used only by integration smoke. It is not a
 production onboarding reference for Canary consumer repositories or other
@@ -60,7 +57,7 @@ Workflow consumers using `ci-with-sonar-*` should only store:
 
 The bundles always fetch `SONAR_TOKEN` from Doppler and resolve the scanner URL from non-secret input/variable values before falling back to Doppler `SONAR_SCANNER_HOST_URL` or legacy Doppler `SONAR_HOST_URL`. Secret URL values are masked in logs and exported only for the active workflow run.
 
-Recommended non-secret variables for local-kind Workflow consumers (passed to reusable workflows as `runner-label`, `sonar-scanner-host-url`, and `sonar-public-base-url` inputs):
+Legacy non-secret variables for existing local-kind Workflow consumers (passed to reusable workflows as `runner-label`, `sonar-scanner-host-url`, and `sonar-public-base-url` inputs):
 
 | Variable | Recommended value | Purpose |
 | --- | --- | --- |
@@ -68,7 +65,7 @@ Recommended non-secret variables for local-kind Workflow consumers (passed to re
 | `SONAR_SCANNER_HOST_URL` | `http://sonarqube.sonarqube.svc.cluster.local:9000` | Private scanner server URL used by both SonarSource scan and quality-gate actions |
 | `SONAR_PUBLIC_BASE_URL` | Stable public HTTPS SonarQube hostname | Browser UI/base URL for generated links; not used by scanner traffic |
 
-`SONAR_HOST_URL` remains a legacy scanner URL fallback for older Workflow consumers. Do not set it to a public UI hostname unless that hostname is the selected scanner endpoint; new local-kind Workflow consumers should prefer `SONAR_SCANNER_HOST_URL`.
+`SONAR_HOST_URL` remains a legacy scanner URL fallback for older Workflow consumers. Do not set it to a public UI hostname unless that hostname is the selected scanner endpoint; existing local-kind Workflow consumers can use `SONAR_SCANNER_HOST_URL`.
 
 ## Local ARC Availability Behavior
 
@@ -78,15 +75,9 @@ Use `pull_request` rather than `pull_request_target` in Workflow consumer exampl
 
 Do not configure custom tunnel/auth headers in Caller workflows; direct scanner reachability from the selected runner is the supported contract.
 
-## Branch Protection Helper
+## Retiring Sonar Checks
 
-Use `scripts/enforce-sonar-branch-protection.sh` from this repository to append the Sonar required-check context without replacing existing required checks:
-
-```bash
-./scripts/enforce-sonar-branch-protection.sh nandohdc/financial-events-ingestion-api "ci / sonar-scan" main
-```
-
-If the context already exists, the script no-ops.
+Do not add new Sonar required checks. For each existing Consumer repository, verify its remaining required tests and security checks before coordinating removal of its obsolete Sonar context. Preserve all unrelated branch protections. Shared Sonar service and credential retirement requires a separate consumer inventory and plan.
 
 ## Add Or Rotate Canary Consumer Repositories
 

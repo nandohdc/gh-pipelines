@@ -28,7 +28,7 @@ jobs:
       coverage-min: "0"
       coverage-artifact-name: fixture-go-coverage
       run-build: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-go-multimodule-api:
     name: test ci-go caller (multimodule api)
@@ -41,7 +41,7 @@ jobs:
       run-build: true
       run-integration: true
       integration-packages: "./internal/..."
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-go-multimodule-cli:
     name: test ci-go caller (multimodule cli)
@@ -54,12 +54,12 @@ jobs:
       run-build: true
       run-integration: true
       integration-packages: "./internal/..."
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-go-multimodule-handoff:
     name: test ci-go caller (multimodule handoff)
     needs: [test-ci-go-multimodule-api, test-ci-go-multimodule-cli]
-    runs-on: ${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -105,7 +105,7 @@ jobs:
       working-directory: tests/fixtures/node
       package-manager: npm
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-python:
     name: test ci-python caller
@@ -115,7 +115,7 @@ jobs:
       lint-paths: tests/fixtures/python/src tests/fixtures/python/tests
       test-paths: tests/fixtures/python/tests
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-with-sonar-go:
     name: test ci-with-sonar-go caller
@@ -127,7 +127,7 @@ jobs:
       working-directory: tests/fixtures/go
       coverage-min: "0"
       __test_skip_sonar_call: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -142,7 +142,7 @@ jobs:
       package-manager: npm
       run-audit: false
       __test_skip_sonar_call: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -158,7 +158,7 @@ jobs:
       test-paths: tests/fixtures/python/tests
       run-audit: false
       __test_skip_sonar_call: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
     secrets:
       DOPPLER_TOKEN: ${{ github.token }}
 
@@ -170,7 +170,7 @@ jobs:
     with:
       working-directory: tests/fixtures/terraform
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   test-ci-terraform-no-plan:
     name: test ci-terraform caller (no plan)
@@ -179,7 +179,7 @@ jobs:
       working-directory: tests/fixtures/terraform
       run-plan: false
       run-audit: false
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest
 
   # Exercises docker-build.yml against the docker fixture. On PRs the attest-sbom
   # job is skipped (build-only, no push). On push to main it builds + pushes the
@@ -200,4 +200,4 @@ jobs:
       dockerfile: tests/fixtures/docker/Dockerfile
       platforms: linux/amd64
       attest-sbom: true
-      runner-label: ${{ vars.RUNNER_LABEL }}
+      runner-label: ubuntu-latest

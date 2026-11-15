@@ -39,17 +39,7 @@ gh variable set RUNNER_LABEL --body "arc-runners-myorg"
 
 ### Internal repo usage
 
-Internal workflows in this repository (lint, security-self-scan, release, integration-smoke, dependabot-auto-merge) resolve their own `runs-on` directly from `${{ vars.RUNNER_LABEL || 'ubuntu-latest' }}`, so the gh-pipelines repo itself can run on the same pool without requiring Caller workflows to pass anything.
-
-`test-callers.yml` is a Self-test caller. It forwards the variable to the local
-reusable workflows it invokes, but is not a Consumer repository:
-
-```yaml
-with:
-  runner-label: ${{ vars.RUNNER_LABEL }}
-```
-
-For the `nandohdc/gh-pipelines` repository, set `RUNNER_LABEL` to `arc-runners-gh-pipelines`.
+Repository-owned automation selects GitHub-hosted `ubuntu-latest` explicitly. This includes fixture callers, release, security scanning, dependency automation, and scheduled/manual probes. A repository or organization `RUNNER_LABEL` does not affect internal jobs. The integration probe retains its deprecated `runner-label` dispatch input for compatibility and ignores it. Existing jobs queued on an older revision keep their original runner selection.
 
 ### Self-hosted runner prerequisites
 
@@ -58,13 +48,14 @@ For the `nandohdc/gh-pipelines` repository, set `RUNNER_LABEL` to `arc-runners-g
 | `ci-go.yml` | `build-essential` (installed on demand), `CGO_ENABLED=1` set automatically |
 | `helm-deploy.yml` | `kubectl` — installed by `actions/setup-doctl` composite |
 | `docker-build.yml`, `docker-release.yml` | Docker daemon |
-| `lint.yml` | `yamllint` — installed via pip before the action step |
 
 Use a runner image broad enough for all jobs the workflow triggers.
 
 ---
 
 ## SonarQube Scanner/Public URL Contract
+
+Sonar workflows are deprecated across the environment. The following reference preserves existing `v1` behavior for consumers during migration; do not adopt it for new integrations.
 
 SonarQube workflows use two different URL roles. Keep them separate in Consumer repositories:
 
@@ -256,6 +247,8 @@ jobs:
 ---
 
 ### ci-with-sonar-go.yml / ci-with-sonar-node.yml / ci-with-sonar-python.yml — Language CI + Sonar Bundle
+
+**Deprecated:** existing `v1` callers retain their behavior; use language CI without Sonar for new integrations.
 
 Reusable bundle workflows that run language CI and SonarQube in parallel. Sonar credentials are fetched per-run from Doppler, so Workflow consumer repositories only store `DOPPLER_TOKEN`.
 
@@ -569,6 +562,8 @@ jobs:
 ---
 
 ### sonar-scan.yml — SonarQube Scan + Quality Gate
+
+**Deprecated:** existing `v1` callers retain their behavior; do not add new Sonar integrations.
 
 Runs SonarQube analysis and waits for quality gate status. The workflow resolves a scanner URL, preflights it before scanning, validates `.scannerwork/report-task.txt`, and then runs the quality gate against the same scanner URL. A failed preflight, scan, report validation, or gate fails the job.
 

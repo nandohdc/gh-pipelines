@@ -119,6 +119,8 @@ actionlint .github/workflows/*.yml
 
 ### Running Self-Tests
 
+Repository-owned jobs and local reusable-workflow callers select GitHub-hosted `ubuntu-latest`; `RUNNER_LABEL` is a downstream-only opt-in. Sonar workflows are deprecated and the bundle fixtures below retain existing required check contexts without executing Sonar.
+
 This repository includes an internal workflow (`.github/workflows/test-callers.yml`) that calls
 `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, and the `ci-with-sonar-*` bundles against fixtures in
 `tests/fixtures/`.
