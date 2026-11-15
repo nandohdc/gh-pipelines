@@ -180,6 +180,10 @@ Reusable CI workflow for Node.js/TypeScript services with lint, tests, coverage 
 2. **test** — install dependencies + run test script + optional coverage gate
 3. **audit** — install dependencies + run audit scan (conditional)
 
+Package manager activation and cache order:
+- Each job initializes Node.js first, enables `corepack` (setting `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` when `package-manager` is `pnpm` or `yarn`), and only then restores/configures the package-manager dependency cache so clean runners succeed without preinstalled `pnpm` or `yarn` binaries.
+- When using `pnpm` or `yarn`, declare `"packageManager"` (for example `"pnpm@9.15.4"` or `"yarn@1.22.22"`) and commit the corresponding lockfile (`pnpm-lock.yaml` or `yarn.lock`).
+
 Coverage gate behavior:
 - If `coverage-min` is `0`, the gate is skipped.
 - If `coverage-min` is greater than `0`, workflow reads coverage from `coverage/coverage-summary.json` (preferred) or `coverage/lcov.info`.
@@ -661,6 +665,8 @@ jobs:
 | `node-version` | no | `20` | Node.js version |
 | `package-manager` | no | `npm` | Package manager (`npm`, `pnpm`, `yarn`) |
 | `cache` | no | `true` | Enable dependency cache for selected manager |
+
+For `pnpm` and `yarn`, `actions/setup-node` installs Node.js, activates the requested package manager via `corepack enable` (with `COREPACK_ENABLE_DOWNLOAD_PROMPT=0`), and then initializes dependency caching when `cache` is `true`.
 
 ### actions/setup-python
 

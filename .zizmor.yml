@@ -15,25 +15,6 @@ rules:
 
   template-injection:
     ignore:
-      # workflow_call inputs in ci-node are validated and constrained by the workflow interface.
-      - ci-node.yml:88
-      - ci-node.yml:91
-      - ci-node.yml:114
-      - ci-node.yml:125
-      - ci-node.yml:136
-      - ci-node.yml:147
-      - ci-node.yml:169
-      - ci-node.yml:172
-      - ci-node.yml:195
-      - ci-node.yml:206
-      - ci-node.yml:219
-      - ci-node.yml:230
-      - ci-node.yml:276
-      - ci-node.yml:279
-      - ci-node.yml:302
-      - ci-node.yml:313
-      - ci-node.yml:324
-      - ci-node.yml:339
       # Helm deploy interface values are constrained by trusted pipeline callers.
       - helm-deploy.yml:115
       - helm-deploy.yml:116

@@ -109,6 +109,24 @@ jobs:
       run-audit: false
       runner-label: ubuntu-latest
 
+  test-ci-node-pnpm:
+    name: test ci-node pnpm caller
+    uses: ./.github/workflows/ci-node.yml
+    with:
+      working-directory: tests/fixtures/node-pnpm
+      package-manager: pnpm
+      run-audit: false
+      runner-label: ubuntu-latest
+
+  test-ci-node-yarn:
+    name: test ci-node yarn caller
+    uses: ./.github/workflows/ci-node.yml
+    with:
+      working-directory: tests/fixtures/node-yarn
+      package-manager: yarn
+      run-audit: false
+      runner-label: ubuntu-latest
+
   test-ci-python:
     name: test ci-python caller
     uses: ./.github/workflows/ci-python.yml
@@ -203,3 +221,69 @@ jobs:
       platforms: linux/amd64
       attest-sbom: true
       runner-label: ubuntu-latest
+
+  # Exercises ./actions/setup-node directly on a clean runner environment where
+  # preinstalled pnpm and Yarn binaries are removed before setup runs.
+  test-setup-node-clean-runner:
+    name: test setup-node clean runner
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package-manager: [npm, pnpm, yarn]
+        cache: ["true", "false"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Remove preinstalled pnpm and yarn to simulate clean runner
+        if: matrix.package-manager != 'npm'
+        shell: bash
+        run: |
+          set -euo pipefail
+          for cmd in pnpm pnpx yarn yarnpkg; do
+            while bin_path="$(command -v "${cmd}" 2>/dev/null || true)"; do
+              [ -n "${bin_path}" ] || break
+              sudo rm -f "${bin_path}"
+            done
+          done
+          if command -v pnpm >/dev/null 2>&1 || command -v yarn >/dev/null 2>&1; then
+            echo "::error::Expected pnpm and yarn to be absent before setup-node runs."
+            exit 1
+          fi
+
+      - name: Setup Node via composite action
+        uses: ./actions/setup-node
+        with:
+          node-version: "20"
+          package-manager: ${{ matrix.package-manager }}
+          cache: ${{ matrix.cache }}
+
+      - name: Install and run fixture checks
+        shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ matrix.package-manager }}
+        run: |
+          set -euo pipefail
+          command -v "${PACKAGE_MANAGER}"
+          "${PACKAGE_MANAGER}" --version
+          case "${PACKAGE_MANAGER}" in
+            npm)
+              cd tests/fixtures/node
+              npm ci
+              npm run lint
+              npm run test
+              ;;
+            pnpm)
+              cd tests/fixtures/node-pnpm
+              pnpm install --frozen-lockfile
+              pnpm run lint
+              pnpm run test
+              ;;
+            yarn)
+              cd tests/fixtures/node-yarn
+              yarn install --immutable || yarn install --frozen-lockfile
+              yarn lint
+              yarn test
+              ;;
+          esac
