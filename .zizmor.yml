@@ -12,14 +12,3 @@ rules:
     ignore:
       # This workflow intentionally uses pull_request_target and never checks out PR code.
       - dependabot-auto-merge.yml
-
-  template-injection:
-    ignore:
-      # Helm deploy interface values are constrained by trusted pipeline callers.
-      - helm-deploy.yml:115
-      - helm-deploy.yml:116
-      - helm-deploy.yml:118
-      - helm-deploy.yml:120
-      - helm-deploy.yml:123
-      - helm-deploy.yml:128
-      - helm-deploy.yml:154

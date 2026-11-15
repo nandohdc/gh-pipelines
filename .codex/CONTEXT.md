@@ -46,6 +46,7 @@
   - `.github/workflows/docker-build.yml`
   - `.github/workflows/docker-release.yml`
   - `.github/workflows/helm-deploy.yml`
+    - `helm-deploy.yml@v2` (`#187`) authorizes event/ref/fork policy (`Authorize deployment context`) before acquiring DigitalOcean cluster credentials (`actions/setup-doctl`), running `helm upgrade --install`, or executing `post-deploy-kubectl`: automatic real deploy on default-branch `push`, `--dry-run --debug` (no `post-deploy-kubectl`) on same-repo `pull_request`, and fail-closed rejection for feature pushes, fork PRs, `pull_request_target`, `workflow_dispatch`, and unsupported events; guarded by `scripts/helm_deploy_workflow_contract_test.py` and hosted `candidate_smoke`
   - `.github/workflows/security-scan.yml`
   - `.github/workflows/sonar-scan.yml`
     - executes `pre-scan-command` under `bash -eo pipefail -c` so intermediate command and pipeline errors fail before SonarQube scanning starts
