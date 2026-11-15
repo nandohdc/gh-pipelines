@@ -3,6 +3,23 @@
 # =============================================================================
 # Copy this Caller workflow to your Terraform Workflow consumer at .github/workflows/ci.yml
 # and adjust the inputs to match your project.
+#
+# Adoption routes:
+#   1. Credential-free static checks (`run-plan: false`): calls
+#      `nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1` for fmt,
+#      `init -backend=false`, validate, and optional IaC audit. Note that
+#      `workflow_call` jobs do not inherit caller steps, env vars, or OIDC
+#      tokens; only use `run-plan: true` with `ci-terraform.yml` when your
+#      backend needs no credentials or a self-hosted `runner-label` provides
+#      ambient identity.
+#   2. Caller-composed authenticated job: define a standard caller job with
+#      `permissions: { contents: read, id-token: write }`, authenticate with your
+#      cloud provider in that same job, and invoke
+#      `nandohdc/gh-pipelines/actions/setup-terraform@v1` before running
+#      `terraform fmt`, `init`, `validate`, and `plan`.
+#
+# Note: Providerless fixture validation verifies syntax and CLI execution;
+# cloud OIDC acceptance requires your provider auth step in the caller job.
 # =============================================================================
 
 name: ci
@@ -11,14 +28,45 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   ci:
     uses: nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1
     with:
       terraform-version: "1.9.8"
       working-directory: "infra"
-      var-file: "envs/dev.tfvars"
-      backend-config: "envs/dev.backend.hcl"
+      run-plan: false
       run-audit: true
       audit-tool: "tfsec"
-      upload-plan: true
+
+# -----------------------------------------------------------------------------
+# Option 2: Caller-composed authenticated Terraform job (when remote backend
+# `init` or `plan` requires OIDC / cloud credentials). Replace or run beside
+# the reusable `ci` job above; never combine `uses: .../ci-terraform.yml@v1`
+# with `runs-on:` or `steps:` on the same job.
+# -----------------------------------------------------------------------------
+#  terraform-plan:
+#    runs-on: ubuntu-latest
+#    permissions:
+#      contents: read
+#      id-token: write
+#    defaults:
+#      run:
+#        working-directory: "infra"
+#    steps:
+#      - uses: actions/checkout@v7
+#
+#      # Authenticate with your cloud provider (or set TF_TOKEN_*) in this job so
+#      # credentials stay in scope for terraform init/plan:
+#      # - uses: <cloud-provider-auth-action>
+#
+#      - uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
+#        with:
+#          terraform-version: "1.9.8"
+#
+#      - run: terraform fmt -check -recursive
+#      - run: terraform init -input=false -backend-config="envs/dev.backend.hcl"
+#      - run: terraform validate
+#      - run: terraform plan -input=false -no-color -var-file="envs/dev.tfvars"

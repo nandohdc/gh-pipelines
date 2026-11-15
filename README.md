@@ -95,6 +95,14 @@ major, and a unique unit and integration coverage artifact name. A later
 its pre-scan command prepares the coverage report. This keeps module toolchains
 isolated while retaining one reusable CI contract.
 
+### Terraform Authentication & Caller Composition
+
+`workflow_call` jobs in `ci-terraform.yml` run on separate runner VMs and do not
+inherit caller job steps, environment variables, or OIDC tokens:
+
+- **Credential-free / static validation**: call `nandohdc/gh-pipelines/.github/workflows/ci-terraform.yml@v1` with `run-plan: false` (or run with a downstream self-hosted `runner-label` that preconfigures ambient cloud identity).
+- **Authenticated remote-backend `init` / `plan`**: compose a caller-owned job with `permissions: { contents: read, id-token: write }`, authenticate with your cloud provider in that same job, invoke `nandohdc/gh-pipelines/actions/setup-terraform@v1`, and run Terraform CLI steps there (see [examples/terraform-service-ci.yml](examples/terraform-service-ci.yml) and [docs/USAGE.md](docs/USAGE.md)).
+
 ## Runner Selection
 
 Repository-owned automation runs on GitHub-hosted `ubuntu-latest` and ignores `RUNNER_LABEL`. The integration probe retains its deprecated `runner-label` dispatch input but ignores it. The selection below applies to downstream Consumer repositories.

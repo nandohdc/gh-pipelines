@@ -109,6 +109,7 @@
   - `actions/setup-node`
   - `actions/setup-python`
   - `actions/setup-terraform`
+    - caller-composed Terraform jobs requiring cloud OIDC/credentials run auth and `actions/setup-terraform` in the same job (`workflow_call` jobs in `ci-terraform.yml` do not inherit caller steps or env; guarded by `scripts/terraform_documentation_contract_test.py` and `test-setup-terraform-caller-composed`)
   - `actions/setup-doctl`
   - `actions/setup-helm`
   - `actions/docker-meta`

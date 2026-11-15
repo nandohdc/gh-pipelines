@@ -335,11 +335,15 @@ jobs:
 
 ### ci-terraform.yml — Terraform CI Pipeline
 
-Reusable CI workflow for Terraform projects with formatting checks, validation, planning, and optional IaC security audit.
+Reusable CI workflow for Terraform projects with formatting checks, validation, optional planning, and optional IaC security audit.
 
 **Trigger:** `workflow_call`
 
-Cloud credentials are managed by the Caller workflow and should be configured in it (environment variables or OIDC).
+`workflow_call` jobs run on isolated runner VMs and **do not inherit** caller job steps, environment variables, or OIDC tokens (hosted runners never inherit caller secrets or ambient cloud credentials across reusable workflow boundaries).
+
+- **Use `ci-terraform.yml@v1` when:** running credential-free static checks (`run-plan: false` skips remote backend init and `plan` while running `fmt`, `init -backend=false`, `validate`, and audit), running `plan` without external credentials (such as a providerless configuration), or targeting a downstream `runner-label` whose runner preconfigures ambient identity.
+- **Compose a caller-owned job with `nandohdc/gh-pipelines/actions/setup-terraform@v1` when:** `terraform init` (remote backend) or `terraform plan` requires cloud OIDC or credentials. Keep your cloud auth step (provider-independent: AWS OIDC, GCP Workload Identity, Azure login, or `TF_TOKEN_*`), `actions/setup-terraform@v1`, and Terraform commands inside the **same** job with `permissions: { contents: read, id-token: write }`.
+- **Verification boundary:** Providerless fixture runs (`tests/fixtures/terraform`) prove workflow syntax, env persistence, and Terraform CLI lifecycle execution; actual cloud OIDC acceptance requires your provider authentication step in a caller-owned job.
 
 #### Inputs
 
@@ -349,22 +353,28 @@ Cloud credentials are managed by the Caller workflow and should be configured in
 | `working-directory` | string | no | `.` | Directory containing Terraform configuration |
 | `var-file` | string | no | `""` | Optional var-file passed to `terraform plan` |
 | `backend-config` | string | no | `""` | Optional backend config (`key=value` or file path) passed to `terraform init` |
+| `run-plan` | boolean | no | `true` | Run `terraform plan` (backend init enabled; set `false` for credential-free static validation) |
 | `run-audit` | boolean | no | `true` | Run IaC security audit job |
 | `audit-tool` | string | no | `tfsec` | Audit tool (`tfsec` or `checkov`) |
+| `tfsec-additional-args` | string | no | `""` | Additional `tfsec` CLI flags (`audit-tool=tfsec` only) |
 | `upload-plan` | boolean | no | `true` | Upload `tfplan` artifact on pull request events |
+| `runner-label` | string | no | `""` | Self-hosted runner label (empty uses `ubuntu-latest`) |
 
 #### Jobs
 
 1. **fmt** — `terraform fmt -check -recursive`
 2. **validate** — `terraform init -backend=false` and `terraform validate`
-3. **plan** — `terraform init`, `terraform plan -out=tfplan -input=false`, optional `tfplan` artifact upload on PR events
-4. **audit** — optional `tfsec` (default) or `checkov` scan
+3. **plan** (when `run-plan: true`) — `terraform init`, `terraform plan -out=tfplan -input=false`, optional `tfplan` artifact upload on PR events
+4. **audit** (when `run-audit: true`) — optional `tfsec` (default) or `checkov` scan
 
-#### Example
+#### Example 1 — Credential-free static validation via reusable workflow
 
 ```yaml
 name: terraform-ci
 on: [push, pull_request]
+
+permissions:
+  contents: read
 
 jobs:
   terraform:
@@ -372,11 +382,39 @@ jobs:
     with:
       terraform-version: "1.9.8"
       working-directory: "infra"
-      var-file: "envs/dev.tfvars"
-      backend-config: "envs/dev.backend.hcl"
+      run-plan: false
       run-audit: true
       audit-tool: "tfsec"
-      upload-plan: true
+```
+
+#### Example 2 — Caller-composed authenticated job (same-job OIDC + `actions/setup-terraform@v1`)
+
+Use a caller-owned job (`runs-on` + `steps`) instead of `workflow_call` whenever remote state `init` or `plan` needs cloud OIDC/credentials. Never combine `uses: .../ci-terraform.yml@v1` with `runs-on:` or `steps:` on the same job.
+
+```yaml
+name: terraform-plan
+on: [push, pull_request]
+
+jobs:
+  terraform-plan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    defaults:
+      run:
+        working-directory: "infra"
+    steps:
+      - uses: actions/checkout@v7
+      # Authenticate with your cloud provider in this same job before running Terraform
+      # (for example: AWS OIDC, GCP Workload Identity, Azure login, or TF_TOKEN_* env).
+      - uses: nandohdc/gh-pipelines/actions/setup-terraform@v1
+        with:
+          terraform-version: "1.9.8"
+      - run: terraform fmt -check -recursive
+      - run: terraform init -input=false -backend-config="envs/dev.backend.hcl"
+      - run: terraform validate
+      - run: terraform plan -input=false -no-color -var-file="envs/dev.tfvars"
 ```
 
 ---
