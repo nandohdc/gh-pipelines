@@ -82,7 +82,7 @@ Primary flow (automated):
    - `release:minor`
    - `release:major`
 2. Merge the PR into `main`.
-3. `.github/workflows/release.yml` computes the next semver from existing `v*.*.*` tags.
+3. `.github/workflows/release.yml` delegates to `scripts/release.py` to resolve merged-PR labels, enforce release guards, compute the next semver from existing `v*.*.*` tags, and publish tags and release notes.
 4. The workflow creates and pushes the new `vX.Y.Z` tag, force-moves `v1`, and publishes a GitHub Release with generated notes.
 
 No release label means no release action (workflow exits successfully without tagging).
@@ -115,6 +115,15 @@ brew install actionlint
 
 # Lint all workflow files
 actionlint .github/workflows/*.yml
+
+# Run release behavior tests against temporary bare Git remotes and scoped adapters
+python3 -m unittest -v scripts/release_test.py
+```
+
+If `pytest` is installed (as in `.github/workflows/lint.yml`), you can also run:
+
+```bash
+python3 -m pytest scripts/release_test.py -q
 ```
 
 ### Running Self-Tests
