@@ -87,6 +87,14 @@ Primary flow (automated):
 
 No release label means no release action (workflow exits successfully without tagging).
 
+#### Retries, partial failures, and recovery
+
+- Every `release.yml` execution prints a `Release recovery summary:` line containing the **Release intent** (`PR#<n>@<sha>`), target `Major lineage`, chosen `Exact release tag`, completed effects (`exact_tag`, `floating_tag`, `github_release`), and retry outcome (`published:published`, `published:resumed`, or `noop:already_released`) without exposing credentials.
+- Retrying an already-completed release is a safe no-op even if PR labels are modified afterward.
+- Retrying after an interruption (for example after pushing `vX.Y.Z` or moving `v<N>` but before creating the GitHub Release) reuses compatible existing tags/releases and completes the original `vX.Y.Z` without allocating another version.
+- Stale retries of older releases never move a lineage's `Floating major tag` backward past a newer descendant commit (`floating_tag:kept_newer`).
+- Conflicting immutable tags, duplicate semver tags on the same commit, or mismatched GitHub Release target SHAs fail visibly (`::error::`) without force-overwriting; inspect the conflicting tag/release target reported in the error and `Release recovery summary:` before resolving and re-running the workflow.
+
 #### Maintaining an existing major after a new major exists
 
 Once a new Major lineage (for example `v2.0.0`) exists on `main`, publish `patch` or `minor` fixes for an older Major lineage (such as `v1`) through a dedicated Maintenance branch `release/v<N>`:

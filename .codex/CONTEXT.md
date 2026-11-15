@@ -73,13 +73,13 @@
   - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-{go,node,python}.yml`, and `ci-terraform.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python,terraform}`
 - Internal release automation workflow:
-  - `.github/workflows/release.yml` triggers on `push` to `main` and delegates execution to `scripts/release.py` (behavior-tested by `scripts/release_test.py`)
+  - `.github/workflows/release.yml` triggers on `push` to `main` and `release/v[0-9]+` maintenance branches, and delegates execution to `scripts/release.py` (behavior-tested by `scripts/release_test.py`)
   - resolves release labels from the merged PR associated with `GITHUB_SHA`
-  - derives semver bump from labels `release:patch|release:minor|release:major`
+  - derives semver bump from labels `release:patch|release:minor|release:major` within isolated Major lineages (`ADR-0001`)
   - no-ops when no release label exists on the associated merged PR
-  - serializes executions via `concurrency` (`release-main`)
-  - handles pre-existing computed tags idempotently when they already point to the target SHA
-  - creates immutable `vX.Y.Z`, force-moves `v1`, and creates GitHub release notes
+  - serializes executions via `concurrency` (`release-${{ github.ref_name }}`)
+  - preserves each commit's chosen Exact release tag across retries and partial failures (`exact_tag` -> `floating_tag` -> `github_release`), treats completed retries as no-ops, refuses backward floating-tag movement on stale retries, and fails visibly on conflicting immutable tags or release target SHAs
+  - creates immutable `vX.Y.Z`, updates the matching `v<N>` Floating major tag forward-only within lineage `N`, and creates GitHub release notes
 - Internal workflow security self-scan:
   - `.github/workflows/security-self-scan.yml`
   - runs `zizmor` high-severity gate plus `actionlint -shellcheck=shellcheck` checks

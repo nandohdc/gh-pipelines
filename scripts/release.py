@@ -18,6 +18,7 @@ _MERGE_PR_RE = re.compile(r"^Merge\s+pull\s+request\s+#([0-9]+)")
 _SEMVER_TAG_RE = re.compile(r"^v([0-9]+)\.([0-9]+)\.([0-9]+)$")
 _MAINTENANCE_BRANCH_RE = re.compile(r"^release/v([0-9]+)$")
 _ATTEST_SBOM_RE = re.compile(r"^[ \t]*attest-sbom:", re.MULTILINE)
+_HEX_SHA_RE = re.compile(r"^[0-9a-fA-F]{40}$")
 _RELEASE_LABEL_PRECEDENCE = (
     ("release:major", "major"),
     ("release:minor", "minor"),
@@ -42,7 +43,7 @@ class GitHubClient(Protocol):
     def list_pr_labels(self, repository: str, pr_number: int) -> List[str]:
         ...
 
-    def release_exists(self, tag: str) -> bool:
+    def get_release(self, tag: str) -> Optional[Dict[str, Any]]:
         ...
 
     def create_release(self, tag: str, target_sha: str, title: str) -> None:
@@ -143,14 +144,23 @@ class GhCliGitHub:
             raise ReleaseError(f"Expected label list from gh api for PR #{pr_number}")
         return [str(item["name"]) for item in labels if isinstance(item, dict) and "name" in item]
 
-    def release_exists(self, tag: str) -> bool:
-        result = _run_cmd(["gh", "release", "view", tag], self._workdir)
+    def get_release(self, tag: str) -> Optional[Dict[str, Any]]:
+        result = _run_cmd(
+            ["gh", "release", "view", tag, "--json", "tagName,targetCommitish,name"],
+            self._workdir,
+        )
         if result.returncode == 0:
-            return True
+            try:
+                data = json.loads(result.stdout)
+            except json.JSONDecodeError as exc:
+                raise ReleaseError(f"Invalid JSON from gh release view {tag}: {exc}") from exc
+            if not isinstance(data, dict):
+                raise ReleaseError(f"Expected JSON object from gh release view {tag}")
+            return data
         detail = (result.stderr or result.stdout).strip()
         lowered = detail.lower()
         if "release not found" in lowered or "http 404" in lowered:
-            return False
+            return None
         raise ReleaseError(f"gh release view {tag} failed: {detail}")
 
     def create_release(self, tag: str, target_sha: str, title: str) -> None:
@@ -254,6 +264,66 @@ def _is_ancestor(workdir: Path, ancestor_sha: str, descendant_sha: str) -> bool:
     return result.returncode == 0
 
 
+def _ensure_commit_available(config: ReleaseConfig, sha: str) -> None:
+    result = _run_cmd(["git", "cat-file", "-e", f"{sha}^{{commit}}"], config.workdir)
+    if result.returncode != 0:
+        _run_cmd(["git", "fetch", "--no-tags", "--quiet", config.remote, sha], config.workdir)
+
+
+def _find_existing_exact_tags_for_sha(
+    remote_tags: Dict[str, Tuple[Tuple[int, int, int], str]], sha: str
+) -> List[Tuple[str, Tuple[int, int, int]]]:
+    matches = [(tag, ver) for tag, (ver, tag_sha) in remote_tags.items() if tag_sha == sha]
+    matches.sort(key=lambda item: item[1])
+    return matches
+
+
+def _find_descendant_tags(
+    workdir: Path,
+    sha: str,
+    remote_tags: Dict[str, Tuple[Tuple[int, int, int], str]],
+    *,
+    major: Optional[int] = None,
+) -> List[Tuple[str, str]]:
+    descendants: List[Tuple[str, str]] = []
+    for tag, (ver, tag_sha) in sorted(remote_tags.items()):
+        if major is not None and ver[0] != major:
+            continue
+        if tag_sha != sha and _is_ancestor(workdir, sha, tag_sha):
+            descendants.append((tag, tag_sha))
+    return descendants
+
+
+def _infer_release_type(latest_tag: str, existing_ver: Tuple[int, int, int]) -> str:
+    latest_ver = _parse_semver(latest_tag)
+    if existing_ver[1] == 0 and existing_ver[2] == 0 and (
+        latest_tag == "v0.0.0" or (latest_ver is not None and existing_ver[0] > latest_ver[0])
+    ):
+        return "major"
+    if existing_ver[2] == 0:
+        return "minor"
+    return "patch"
+
+
+def _extract_release_target_sha(release: Dict[str, Any]) -> Optional[str]:
+    raw_target = release.get("targetCommitish") or release.get("target_sha") or ""
+    if not isinstance(raw_target, str):
+        return None
+    candidate = raw_target.strip()
+    if _HEX_SHA_RE.match(candidate):
+        return candidate.lower()
+    return None
+
+
+def _validate_existing_release(tag: str, target_sha: str, release: Dict[str, Any]) -> None:
+    recorded_sha = _extract_release_target_sha(release)
+    if recorded_sha is not None and recorded_sha != target_sha.lower():
+        raise ReleaseError(
+            f"Inconsistent recovery state for {tag}: existing GitHub release targets "
+            f"{recorded_sha}, expected {target_sha}. Inspect the conflicting release record before retrying."
+        )
+
+
 def _resolve_target_major_for_patch_or_minor(
     config: ReleaseConfig,
     branch_major: Optional[int],
@@ -285,9 +355,82 @@ def _resolve_target_major_for_patch_or_minor(
     return 0
 
 
-def _plan_release(config: ReleaseConfig, pr_number: int, release_type: str) -> ReleasePlan:
+def _plan_release(
+    config: ReleaseConfig,
+    pr_number: int,
+    release_type: Optional[str],
+    remote_tags: Optional[Dict[str, Tuple[Tuple[int, int, int], str]]] = None,
+) -> Tuple[ReleasePlan, bool]:
     branch_major = _resolve_branch_major(config.base_ref)
-    remote_tags = _list_remote_semver_tags(config)
+    if remote_tags is None:
+        remote_tags = _list_remote_semver_tags(config)
+
+    existing_for_sha = _find_existing_exact_tags_for_sha(remote_tags, config.sha)
+    if len(existing_for_sha) > 1:
+        names = ", ".join(tag for tag, _ in existing_for_sha)
+        raise ReleaseError(
+            f"Inconsistent recovery state for PR #{pr_number} at {config.sha}: "
+            f"multiple exact release tags point to this commit ({names}). "
+            "Resolve conflicting tags manually before retrying."
+        )
+
+    if len(existing_for_sha) == 1:
+        existing_tag, existing_ver = existing_for_sha[0]
+        target_major = existing_ver[0]
+        if branch_major is not None and target_major != branch_major:
+            raise ReleaseError(
+                f"Inconsistent recovery state for PR #{pr_number} at {config.sha}: "
+                f"existing tag {existing_tag} belongs to lineage v{target_major}, "
+                f"incompatible with branch {config.base_ref}."
+            )
+        ancestor_lineage = [
+            (ver, tag)
+            for tag, (ver, tsha) in remote_tags.items()
+            if ver[0] == target_major
+            and tsha != config.sha
+            and _is_ancestor(config.workdir, tsha, config.sha)
+        ]
+        latest_tag = max(ancestor_lineage, key=lambda item: item[0])[1] if ancestor_lineage else "v0.0.0"
+        effective_type = _infer_release_type(latest_tag, existing_ver)
+        if branch_major is not None and (release_type == "major" or effective_type == "major"):
+            raise ReleaseError(
+                f"release:major is not allowed on maintenance branch {config.base_ref}; "
+                "breaking changes must be released from main."
+            )
+        target_lineage = f"v{target_major}"
+        plan = ReleasePlan(
+            pr_number=pr_number,
+            release_type=effective_type,
+            target_major=target_major,
+            target_lineage=target_lineage,
+            latest_tag=latest_tag,
+            next_tag=existing_tag,
+            floating_tag=target_lineage,
+            target_sha=config.sha,
+        )
+        print(
+            f"Resuming release intent: pr=#{pr_number} sha={config.sha} "
+            f"lineage={plan.target_lineage} version={plan.next_tag}"
+        )
+        return plan, True
+
+    if release_type is None:
+        raise ReleaseError("Cannot plan a new release without a release label.")
+
+    descendants = _find_descendant_tags(config.workdir, config.sha, remote_tags, major=branch_major)
+    if descendants:
+        desc_tag, desc_sha = descendants[0]
+        raise ReleaseError(
+            f"Stale pre-tag release attempt for PR #{pr_number} at {config.sha}: "
+            f"newer commit {desc_sha} already holds {desc_tag}. "
+            "No tags were modified; verify release order before retrying."
+        )
+
+    prior_tags = {
+        tag: (ver, tsha)
+        for tag, (ver, tsha) in remote_tags.items()
+        if tsha != config.sha and not _is_ancestor(config.workdir, config.sha, tsha)
+    }
 
     if release_type == "major":
         if branch_major is not None:
@@ -295,17 +438,17 @@ def _plan_release(config: ReleaseConfig, pr_number: int, release_type: str) -> R
                 f"release:major is not allowed on maintenance branch {config.base_ref}; "
                 "breaking changes must be released from main."
             )
-        highest_major = max((ver[0] for ver, _ in remote_tags.values()), default=0)
+        highest_major = max((ver[0] for ver, _ in prior_tags.values()), default=0)
         highest_lineage = [
-            (ver, tag) for tag, (ver, _) in remote_tags.items() if ver[0] == highest_major
+            (ver, tag) for tag, (ver, _) in prior_tags.items() if ver[0] == highest_major
         ]
         latest_tag = max(highest_lineage, key=lambda item: item[0])[1] if highest_lineage else "v0.0.0"
         target_major = highest_major + 1
         next_tag = f"v{target_major}.0.0"
     elif release_type in ("patch", "minor"):
-        target_major = _resolve_target_major_for_patch_or_minor(config, branch_major, remote_tags)
+        target_major = _resolve_target_major_for_patch_or_minor(config, branch_major, prior_tags)
         lineage_tags = [
-            (ver, tag) for tag, (ver, _) in remote_tags.items() if ver[0] == target_major
+            (ver, tag) for tag, (ver, _) in prior_tags.items() if ver[0] == target_major
         ]
         if lineage_tags:
             (major, minor, patch), latest_tag = max(lineage_tags, key=lambda item: item[0])
@@ -334,7 +477,7 @@ def _plan_release(config: ReleaseConfig, pr_number: int, release_type: str) -> R
         f"Planned release: lineage={plan.target_lineage} "
         f"latest={plan.latest_tag} next={plan.next_tag} floating={plan.floating_tag}"
     )
-    return plan
+    return plan, False
 
 
 def _resolve_remote_tag_commit(config: ReleaseConfig, tag: str) -> Optional[str]:
@@ -365,7 +508,7 @@ def _resolve_local_tag_commit(config: ReleaseConfig, tag: str) -> Optional[str]:
     return result.stdout.strip()
 
 
-def _publish_tags(config: ReleaseConfig, plan: ReleasePlan) -> None:
+def _publish_tags(config: ReleaseConfig, plan: ReleasePlan) -> Tuple[str, str]:
     _run_checked(["git", "config", "user.name", _BOT_NAME], config.workdir)
     _run_checked(["git", "config", "user.email", _BOT_EMAIL], config.workdir)
 
@@ -385,23 +528,74 @@ def _publish_tags(config: ReleaseConfig, plan: ReleasePlan) -> None:
 
     if remote_sha is not None:
         print(f"Tag {plan.next_tag} already exists at target SHA; continuing.")
+        exact_effect = "reused"
     else:
         if local_sha is None:
             _run_checked(["git", "tag", plan.next_tag, config.sha], config.workdir)
         _run_checked(["git", "push", config.remote, f"refs/tags/{plan.next_tag}"], config.workdir)
+        exact_effect = "created"
 
-    _run_checked(["git", "tag", "-f", plan.floating_tag, config.sha], config.workdir)
-    _run_checked(
-        ["git", "push", config.remote, f"refs/tags/{plan.floating_tag}", "--force"],
-        config.workdir,
-    )
+    current_floating_sha = _resolve_remote_tag_commit(config, plan.floating_tag)
+    if current_floating_sha == config.sha:
+        print(f"Floating tag {plan.floating_tag} already points to {config.sha}; skipping update.")
+        floating_effect = "reused"
+    elif current_floating_sha is not None:
+        _ensure_commit_available(config, current_floating_sha)
+        if _is_ancestor(config.workdir, config.sha, current_floating_sha):
+            print(
+                f"Floating tag {plan.floating_tag} already points to newer commit "
+                f"{current_floating_sha}; leaving {plan.floating_tag} unchanged."
+            )
+            floating_effect = "kept_newer"
+        elif not _is_ancestor(config.workdir, current_floating_sha, config.sha):
+            raise ReleaseError(
+                f"Floating tag {plan.floating_tag} points to {current_floating_sha}, "
+                f"which is outside {config.sha}'s ancestry. Resolve manually before retrying."
+            )
+        else:
+            _run_checked(["git", "tag", "-f", plan.floating_tag, config.sha], config.workdir)
+            _run_checked(
+                ["git", "push", config.remote, f"refs/tags/{plan.floating_tag}", "--force"],
+                config.workdir,
+            )
+            floating_effect = "moved"
+    else:
+        _run_checked(["git", "tag", "-f", plan.floating_tag, config.sha], config.workdir)
+        _run_checked(
+            ["git", "push", config.remote, f"refs/tags/{plan.floating_tag}", "--force"],
+            config.workdir,
+        )
+        floating_effect = "created"
+
+    return exact_effect, floating_effect
 
 
-def _publish_github_release(github: GitHubClient, next_tag: str, target_sha: str) -> None:
-    if github.release_exists(next_tag):
+def _publish_github_release(github: GitHubClient, next_tag: str, target_sha: str) -> str:
+    existing = github.get_release(next_tag)
+    if existing is not None:
+        _validate_existing_release(next_tag, target_sha, existing)
         print(f"Release {next_tag} already exists; skipping creation.")
-        return
+        return "reused"
     github.create_release(next_tag, target_sha, next_tag)
+    return "created"
+
+
+def _log_recovery_summary(
+    plan: ReleasePlan,
+    *,
+    base_ref: str,
+    exact_effect: str,
+    floating_effect: str,
+    release_effect: str,
+    outcome_status: str,
+    outcome_reason: str,
+) -> None:
+    print(
+        f"Release recovery summary: intent=PR#{plan.pr_number}@{plan.target_sha} "
+        f"branch={base_ref} lineage={plan.target_lineage} version={plan.next_tag} "
+        f"effects=exact_tag:{exact_effect},floating_tag:{floating_effect},"
+        f"github_release:{release_effect} outcome={outcome_status}:{outcome_reason}"
+    )
 
 
 def run_release(config: ReleaseConfig, github: GitHubClient) -> ReleaseOutcome:
@@ -420,20 +614,79 @@ def run_release(config: ReleaseConfig, github: GitHubClient) -> ReleaseOutcome:
 
     labels = github.list_pr_labels(config.repository, pr_number)
     release_type = _resolve_release_type(labels)
-    if release_type is None:
+
+    remote_tags = _list_remote_semver_tags(config)
+    existing_for_sha = _find_existing_exact_tags_for_sha(remote_tags, config.sha)
+    if release_type is None and not existing_for_sha:
         print("No release label found; skipping release.")
         return ReleaseOutcome(status="skipped", reason="no_release_label", pr_number=pr_number)
 
-    print(f"Detected release type: {release_type} (PR #{pr_number})")
+    if release_type is not None:
+        print(f"Detected release type: {release_type} (PR #{pr_number})")
+
+    plan, resumed_from_existing_tag = _plan_release(
+        config, pr_number, release_type, remote_tags=remote_tags
+    )
+
+    if resumed_from_existing_tag:
+        current_floating_sha = _resolve_remote_tag_commit(config, plan.floating_tag)
+        floating_effect: Optional[str] = None
+        if current_floating_sha == config.sha:
+            floating_effect = "reused"
+        elif current_floating_sha is not None:
+            _ensure_commit_available(config, current_floating_sha)
+            if _is_ancestor(config.workdir, config.sha, current_floating_sha):
+                floating_effect = "kept_newer"
+
+        existing_release = github.get_release(plan.next_tag)
+        if existing_release is not None:
+            _validate_existing_release(plan.next_tag, config.sha, existing_release)
+
+        if floating_effect is not None and existing_release is not None:
+            _log_recovery_summary(
+                plan,
+                base_ref=config.base_ref,
+                exact_effect="reused",
+                floating_effect=floating_effect,
+                release_effect="reused",
+                outcome_status="noop",
+                outcome_reason="already_released",
+            )
+            return ReleaseOutcome(
+                status="noop",
+                reason="already_released",
+                pr_number=pr_number,
+                release_type=plan.release_type,
+                latest_tag=plan.latest_tag,
+                next_tag=plan.next_tag,
+                target_sha=config.sha,
+                plan=plan,
+            )
+
     _verify_attestation_guard(config)
-    plan = _plan_release(config, pr_number, release_type)
-    _publish_tags(config, plan)
-    _publish_github_release(github, plan.next_tag, config.sha)
+    exact_effect, floating_effect_written = _publish_tags(config, plan)
+    release_effect = _publish_github_release(github, plan.next_tag, config.sha)
+    is_resumed = (
+        resumed_from_existing_tag
+        or exact_effect == "reused"
+        or floating_effect_written in ("reused", "kept_newer")
+        or release_effect == "reused"
+    )
+    outcome_reason = "resumed" if is_resumed else "published"
+    _log_recovery_summary(
+        plan,
+        base_ref=config.base_ref,
+        exact_effect=exact_effect,
+        floating_effect=floating_effect_written,
+        release_effect=release_effect,
+        outcome_status="published",
+        outcome_reason=outcome_reason,
+    )
     return ReleaseOutcome(
         status="published",
-        reason="published",
+        reason=outcome_reason,
         pr_number=pr_number,
-        release_type=release_type,
+        release_type=plan.release_type,
         latest_tag=plan.latest_tag,
         next_tag=plan.next_tag,
         target_sha=config.sha,
