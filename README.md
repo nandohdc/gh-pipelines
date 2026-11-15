@@ -31,7 +31,7 @@ Sonar workflows are deprecated across the environment. Existing `v1` interfaces 
 | **Terraform CI** | `ci-terraform.yml` | Terraform fmt, validate, plan, and IaC audit |
 | **Docker Build** | `docker-build.yml` | Build + push images to GHCR* |
 | **Docker Release** | `docker-release.yml` | SBOM, cosign signing, SLSA provenance |
-| **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (dry-run on PR) |
+| **Helm Deploy** | `helm-deploy.yml` | Helm upgrade --install (`@v2` guarded default-branch deploy; `@v1` legacy) |
 | **Security Scan** | `security-scan.yml` | Trivy container vulnerability scan |
 | **Sonar Scan** | `sonar-scan.yml` | SonarQube scan with preflighted scanner URL, quality gate enforcement, and optional pre-scan command hook |
 
@@ -150,9 +150,9 @@ This repository uses **tag-based versioning** with independent compatible **Majo
 - `v1`, `v2`, … — **Floating major tags** (recommended for Consumer repositories, both Workflow consumers and Composite-action consumers). Each Floating major tag advances only for backward-compatible `patch` and `minor` releases within its own Major lineage.
 - `v1.0.0`, `v2.0.0`, … — immutable **Exact release tags** that never move once published.
 
-Use `@v1` for normal backward-compatible delivery. Breaking changes (such as removing/renaming inputs or changing defaults that break existing callers, including upcoming deployment-policy tightening) are never released through `v1`; instead, they establish a new Major lineage (`v2.0.0` and floating `v2`) while leaving `v1` untouched so existing Consumer repositories can migrate deliberately. An exact release reference fixes the declared workflow reference, not every transitive dependency. Branch references and `@main` are validation references, not production onboarding references. The `@main` reference is reserved for the integration-smoke probe.
+Use `@v1` for normal backward-compatible delivery. Breaking changes (such as removing/renaming inputs or changing defaults that break existing callers, including the `@v2` `helm-deploy.yml` default-branch deployment restriction) are never released through `v1`; instead, they establish a new Major lineage (`v2.0.0` and floating `v2`) while leaving `v1` untouched so existing Consumer repositories can migrate deliberately. An exact release reference fixes the declared workflow reference, not every transitive dependency. Branch references and `@main` are validation references, not production onboarding references. The `@main` reference is reserved for the integration-smoke probe.
 
-To adopt a new major release when ready, update every Workflow invocation and direct composite action `uses:` reference in your Caller workflows together (for example `@v1` -> `@v2`) after reviewing the release notes and [Usage Guide](docs/USAGE.md#versioning-compatibility-and-major-migration).
+To adopt a new major release when ready (for example moving a `helm-deploy.yml` Workflow consumer to `@v2` to enforce default-branch push deployment and pre-credential authorization), update every Workflow invocation and direct composite action `uses:` reference in your Caller workflows together (for example `@v1` -> `@v2`) after reviewing the release notes and [Usage Guide](docs/USAGE.md#versioning-compatibility-and-major-migration).
 
 ## Repository Layout
 

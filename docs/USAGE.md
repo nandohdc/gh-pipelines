@@ -533,7 +533,13 @@ jobs:
 
 ### helm-deploy.yml — Helm Deploy
 
-Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Performs dry-run on pull requests, actual deployment on push to main.
+Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster.
+
+In **`@v2`**, an authorization step evaluates `github.event_name`, `github.ref`, `github.event.repository.default_branch`, and pull-request fork metadata **before** obtaining cluster credentials or invoking Helm / `post-deploy-kubectl`:
+
+- **Default-branch `push` (`refs/heads/<default_branch>`)**: Authorizes `mode=deploy`, configures cluster credentials, executes real `helm upgrade --install --atomic`, and runs `post-deploy-kubectl` commands if supplied (`deploy / <release-name>`).
+- **Same-repository `pull_request`**: Authorizes `mode=dry-run`, configures cluster credentials, executes `helm upgrade --install --dry-run --debug`, and skips `post-deploy-kubectl` (`deploy (dry-run) / <release-name>` — never reported as a real deployment). Fork pull requests (`fork == true` or mismatched head repository) are rejected before credential setup without broadening fork secret access.
+- **Blocked events and refs**: Feature-branch pushes, release/tag pushes, `workflow_dispatch` (disabled by default until explicit protected-environment opt-in lands), `pull_request_target`, and unsupported events fail closed before `actions/setup-doctl`, `helm`, or `post-deploy-kubectl` can run.
 
 #### Inputs
 
@@ -549,6 +555,7 @@ Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Perform
 | `extra-helm-args` | string | no | `""` | Additional helm arguments |
 | `post-deploy-kubectl` | string | no | `""` | Post-deploy kubectl commands |
 | `extra-helm-repos` | string | no | `""` | Extra Helm repos (`name=url`) |
+| `runner-label` | string | no | `""` | Self-hosted runner label (empty uses `ubuntu-latest`) |
 
 #### Secrets
 
@@ -556,7 +563,7 @@ Runs `helm upgrade --install` against a DigitalOcean Kubernetes cluster. Perform
 | --- | --- | --- |
 | `digitalocean-token` | **yes** | DigitalOcean PAT |
 
-#### Example
+#### Example (`@v2`)
 
 ```yaml
 name: deploy
@@ -567,7 +574,7 @@ on:
 
 jobs:
   deploy:
-    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v1
+    uses: nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2
     with:
       release-name: my-app
       chart: ./chart
@@ -576,6 +583,13 @@ jobs:
     secrets:
       digitalocean-token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
 ```
+
+#### Migrating `helm-deploy.yml` from `@v1` to `@v2`
+
+1. Keep existing callers on `@v1` until ready to adopt the default-branch enforcement contract.
+2. Check Caller workflow triggers: remove `workflow_dispatch`, non-default `push.branches`, and `pull_request_target` triggers from automatic `helm-deploy.yml@v2` Caller workflows (or split non-deploy checks cleanly), because `@v2` rejects those triggers before cluster authentication.
+3. Verify pull-request Caller workflows run on same-repository `pull_request` events for `deploy (dry-run)` validation without exposing secrets to forks.
+4. Update `uses:` references in the Caller workflow together to `nandohdc/gh-pipelines/.github/workflows/helm-deploy.yml@v2`.
 
 ---
 

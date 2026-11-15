@@ -59,7 +59,112 @@ _CANDIDATE_WORKFLOW_FILES = (
     ("ci-node.yml", "candidate-ci-node.yml"),
     ("ci-python.yml", "candidate-ci-python.yml"),
     ("ci-terraform.yml", "candidate-ci-terraform.yml"),
+    ("helm-deploy.yml", "candidate-helm-deploy.yml"),
 )
+
+
+def _helm_policy_smoke_script() -> str:
+    """Return a stdlib-only hosted-runner script verifying candidate helm-deploy policy."""
+    return (
+        "set -euo pipefail\n"
+        "python3 - <<'PY'\n"
+        "import json, os, stat, subprocess, tempfile\n"
+        "from pathlib import Path\n\n"
+        "wf_text = Path('.github/workflows/candidate-helm-deploy.yml').read_text(encoding='utf-8')\n"
+        "def extract_run(name: str) -> str:\n"
+        "    lines = wf_text.splitlines()\n"
+        "    idx = next(i for i, line in enumerate(lines) if f'- name: {name}' in line)\n"
+        "    step_indent = len(lines[idx]) - len(lines[idx].lstrip())\n"
+        "    for j in range(idx + 1, len(lines)):\n"
+        "        cur = lines[j]\n"
+        "        if cur.strip() and (len(cur) - len(cur.lstrip())) <= step_indent and cur.lstrip().startswith('- '):\n"
+        "            break\n"
+        "        if cur.strip() == 'run: |':\n"
+        "            body, base_indent = [], None\n"
+        "            for line in lines[j + 1:]:\n"
+        "                if not line.strip():\n"
+        "                    body.append('')\n"
+        "                    continue\n"
+        "                indent = len(line) - len(line.lstrip())\n"
+        "                if base_indent is None:\n"
+        "                    base_indent = indent\n"
+        "                if indent < base_indent:\n"
+        "                    break\n"
+        "                body.append(line[base_indent:])\n"
+        "            return '\\n'.join(body) + '\\n'\n"
+        "    raise AssertionError(f'missing run block for {name}')\n\n"
+        "auth_run = extract_run('Authorize deployment context')\n"
+        "deploy_run = extract_run('Deploy (or dry-run on PR)')\n"
+        "post_run = extract_run('Post-deploy kubectl commands')\n\n"
+        "def run_case(event: str, ref: str, default_branch: str, repo: str, head_repo: str, head_fork: str):\n"
+        "    with tempfile.TemporaryDirectory() as tmp:\n"
+        "        tmp_path = Path(tmp)\n"
+        "        bin_dir = tmp_path / 'bin'\n"
+        "        bin_dir.mkdir()\n"
+        "        log_path = tmp_path / 'cmds.log'\n"
+        "        gh_out = tmp_path / 'out.txt'\n"
+        "        gh_env = tmp_path / 'env.txt'\n"
+        "        gh_out.write_text('', encoding='utf-8')\n"
+        "        gh_env.write_text('', encoding='utf-8')\n"
+        "        for tool in ('doctl', 'helm', 'kubectl'):\n"
+        "            p = bin_dir / tool\n"
+        "            p.write_text(\n"
+        "                '#!/usr/bin/env python3\\nimport json, os, sys\\n'\n"
+        "                f'open({str(log_path)!r}, \"a\").write(json.dumps([os.path.basename(sys.argv[0]), *sys.argv[1:]]) + \"\\\\n\")\\n',\n"
+        "                encoding='utf-8',\n"
+        "            )\n"
+        "            p.chmod(p.stat().st_mode | stat.S_IXUSR)\n"
+        "        env = dict(os.environ)\n"
+        "        env.update({\n"
+        "            'PATH': f'{bin_dir}{os.pathsep}{env.get(\"PATH\", \"\")}',\n"
+        "            'GITHUB_OUTPUT': str(gh_out),\n"
+        "            'GITHUB_ENV': str(gh_env),\n"
+        "            'GITHUB_EVENT_NAME': event,\n"
+        "            'GITHUB_REF_FULL': ref,\n"
+        "            'DEFAULT_BRANCH': default_branch,\n"
+        "            'GITHUB_REPOSITORY_NAME': repo,\n"
+        "            'PULL_REQUEST_HEAD_REPOSITORY': head_repo,\n"
+        "            'PULL_REQUEST_HEAD_FORK': head_fork,\n"
+        "        })\n"
+        "        auth = subprocess.run(['bash', '-c', auth_run], env=env, capture_output=True, text=True)\n"
+        "        outs = dict(line.split('=', 1) for line in gh_out.read_text(encoding='utf-8').splitlines() if '=' in line)\n"
+        "        if auth.returncode != 0:\n"
+        "            cmds = [json.loads(x) for x in log_path.read_text().splitlines()] if log_path.exists() else []\n"
+        "            return False, outs, cmds\n"
+        "        env.update({\n"
+        "            'HELM_RELEASE_NAME': 'fixture-app',\n"
+        "            'HELM_CHART': './tests/fixtures/helm',\n"
+        "            'HELM_NAMESPACE': 'fixture-ns',\n"
+        "            'HELM_VALUES_FILE': './tests/fixtures/helm/values.yaml',\n"
+        "            'HELM_TIMEOUT': '5m',\n"
+        "            'HELM_CHART_VERSION': '',\n"
+        "            'HELM_EXTRA_ARGS': '',\n"
+        "            'HELM_DEPLOY_MODE': outs['mode'],\n"
+        "            'HELM_ALLOW_POST_DEPLOY': outs['allow-post-deploy'],\n"
+        "            'POST_DEPLOY_KUBECTL': 'kubectl get pods -n fixture-ns',\n"
+        "        })\n"
+        "        if outs['acquire-credentials'] == 'true':\n"
+        "            subprocess.run(['bash', '-c', 'doctl kubernetes cluster kubeconfig save nonprod-id'], env=env, check=True)\n"
+        "        subprocess.run(['bash', '-c', deploy_run], env=env, check=True)\n"
+        "        if outs['mode'] == 'deploy' and outs['allow-post-deploy'] == 'true':\n"
+        "            subprocess.run(['bash', '-c', post_run], env=env, check=True)\n"
+        "        cmds = [json.loads(x) for x in log_path.read_text().splitlines()] if log_path.exists() else []\n"
+        "        return True, outs, cmds\n\n"
+        "ok, outs, cmds = run_case('push', 'refs/heads/main', 'main', 'nandohdc/app', '', '')\n"
+        "assert ok and outs['mode'] == 'deploy' and any(c[0] == 'helm' and '--dry-run' not in c for c in cmds) and any(c[0] == 'kubectl' for c in cmds), (ok, outs, cmds)\n"
+        "ok, outs, cmds = run_case('pull_request', 'refs/pull/1/merge', 'main', 'nandohdc/app', 'nandohdc/app', 'false')\n"
+        "assert ok and outs['mode'] == 'dry-run' and any(c[0] == 'helm' and '--dry-run' in c for c in cmds) and not any(c[0] == 'kubectl' for c in cmds), (ok, outs, cmds)\n"
+        "for bad in [\n"
+        "    ('push', 'refs/heads/feat/unsafe', 'main', 'nandohdc/app', '', ''),\n"
+        "    ('pull_request', 'refs/pull/2/merge', 'main', 'nandohdc/app', 'fork/app', 'true'),\n"
+        "    ('workflow_dispatch', 'refs/heads/main', 'main', 'nandohdc/app', '', ''),\n"
+        "    ('pull_request_target', 'refs/heads/main', 'main', 'nandohdc/app', '', ''),\n"
+        "]:\n"
+        "    ok, _, cmds = run_case(*bad)\n"
+        "    assert not ok and cmds == [], (bad, ok, cmds)\n"
+        "print(f\"Candidate helm-deploy policy smoke passed for {os.environ['EXPECTED_CANDIDATE_SHA']}\")\n"
+        "PY\n"
+    )
 
 
 class CandidateSmokeError(RuntimeError):
@@ -432,6 +537,12 @@ def _build_candidate_smoke_workflow(
             "id": "docker_meta",
             "uses": f"{config.consumer_repo}/actions/docker-meta@{smoke_branch}",
             "with": {"image-name": "ghcr.io/nandohdc/candidate-smoke-fixture"},
+        },
+        {
+            "name": "Test candidate helm-deploy policy and command contract",
+            "shell": "bash",
+            "env": {"EXPECTED_CANDIDATE_SHA": candidate_sha},
+            "run": _helm_policy_smoke_script(),
         },
         {
             "name": "Verify candidate composite action provenance and record runner metadata",

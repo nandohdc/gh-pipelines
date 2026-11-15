@@ -160,9 +160,14 @@ class CandidateSmokeTests(unittest.TestCase):
 
             # Nested composite actions inside candidate reusable workflows must resolve to
             # the staged candidate branch rather than published @v1 tags.
-            for lang in ("go", "python", "terraform"):
+            for wf_name in (
+                "candidate-ci-go.yml",
+                "candidate-ci-python.yml",
+                "candidate-ci-terraform.yml",
+                "candidate-helm-deploy.yml",
+            ):
                 wf_doc = yaml.safe_load(
-                    (workspace / ".github" / "workflows" / f"candidate-ci-{lang}.yml").read_text(
+                    (workspace / ".github" / "workflows" / wf_name).read_text(
                         encoding="utf-8"
                     )
                 )
@@ -174,7 +179,7 @@ class CandidateSmokeTests(unittest.TestCase):
                 ]
                 self.assertFalse(
                     any("nandohdc/gh-pipelines/actions/" in ref for ref in step_uses),
-                    f"unexpected unrewritten action ref in candidate-ci-{lang}.yml: {step_uses}",
+                    f"unexpected unrewritten action ref in {wf_name}: {step_uses}",
                 )
                 self.assertTrue(
                     any(
@@ -182,7 +187,7 @@ class CandidateSmokeTests(unittest.TestCase):
                         and ref.endswith(f"@{smoke_branch}")
                         for ref in step_uses
                     ),
-                    f"expected rewritten candidate action ref in candidate-ci-{lang}.yml: {step_uses}",
+                    f"expected rewritten candidate action ref in {wf_name}: {step_uses}",
                 )
 
             # Every staged composite action must record candidate SHA provenance.
@@ -219,6 +224,8 @@ class CandidateSmokeTests(unittest.TestCase):
                 jobs["candidate-smoke-result"]["name"],
                 "candidate-smoke-result / ${{ inputs.candidate_sha }}",
             )
+            direct_step_names = [step.get("name") for step in jobs["smoke-direct-actions"]["steps"]]
+            self.assertIn("Test candidate helm-deploy policy and command contract", direct_step_names)
             self.assertTrue((workspace / "tests" / "fixtures" / "helm" / "Chart.yaml").is_file())
 
     def test_prepare_candidate_smoke_tree_supports_negative_scenarios(self) -> None:

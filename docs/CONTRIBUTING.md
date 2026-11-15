@@ -159,6 +159,12 @@ Candidate smoke orchestration (`scripts/candidate_smoke.py`) is tested against t
 python3 -m unittest -v scripts/candidate_smoke_test.py
 ```
 
+Helm deployment event/ref authorization and mocked `doctl`/`helm`/`kubectl` behavior are tested via:
+
+```bash
+python3 scripts/helm_deploy_workflow_contract_test.py
+```
+
 Maintainers with access to `nandohdc/gh-pipelines-hosted-acceptance` can execute hosted candidate rehearsals (and clean up the ephemeral smoke branch automatically) or verify the exact-commit promotion gate via:
 
 ```bash

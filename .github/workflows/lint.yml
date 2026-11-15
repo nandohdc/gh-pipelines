@@ -46,6 +46,7 @@ jobs:
           python scripts/multimodule_go_workflow_contract_test.py
           python scripts/hosted_runner_workflow_contract_test.py
           python scripts/node_setup_workflow_contract_test.py
+          python scripts/helm_deploy_workflow_contract_test.py
           python scripts/terraform_documentation_contract_test.py
 
       - name: Contract library unit tests
