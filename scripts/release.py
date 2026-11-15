@@ -33,6 +33,7 @@ REQUIRED_CI_CHECKS: Tuple[Tuple[str, str], ...] = (
     (".github/workflows/test-callers.yml", "test ci-with-sonar-node caller / ci / lint"),
     (".github/workflows/test-callers.yml", "test ci-with-sonar-python caller / ci / lint"),
 )
+_REQUIRED_WORKFLOW_PATHS = frozenset(wf for wf, _ in REQUIRED_CI_CHECKS)
 _RELEASE_WORKFLOW_PATH = ".github/workflows/release.yml"
 _DEFAULT_CONSUMER_REPO = "nandohdc/gh-pipelines-hosted-acceptance"
 _GITHUB_ACTIONS_APP_SLUG = "github-actions"
@@ -411,7 +412,14 @@ def _index_workflow_runs_by_sha(
             continue
         run_id = run.get("id")
         workflow_path = run.get("path")
-        if not isinstance(run_id, int) or not isinstance(workflow_path, str) or not workflow_path:
+        if (
+            not isinstance(run_id, int)
+            or not isinstance(workflow_path, str)
+            or workflow_path not in _REQUIRED_WORKFLOW_PATHS
+        ):
+            continue
+        event = run.get("event")
+        if isinstance(event, str) and event.strip() and event.strip() != "push":
             continue
         runs_by_id[run_id] = (workflow_path, run_id)
         suite_id = run.get("check_suite_id")
