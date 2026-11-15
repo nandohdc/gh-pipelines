@@ -48,6 +48,7 @@
   - `.github/workflows/helm-deploy.yml`
   - `.github/workflows/security-scan.yml`
   - `.github/workflows/sonar-scan.yml`
+    - executes `pre-scan-command` under `bash -eo pipefail -c` so intermediate command and pipeline errors fail before SonarQube scanning starts
 - Internal repository workflows:
   - `.github/workflows/lint.yml`
   - `.github/workflows/test-callers.yml`
