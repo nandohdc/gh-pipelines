@@ -51,6 +51,12 @@ jobs:
           python -m pip install pytest pytest-cov
           python -m pytest scripts/contract_lib_test.py -q --cov=scripts.contract_lib --cov-report=term-missing
 
+      - name: Release behavior tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest scripts/release_test.py -q --cov=scripts.release --cov-report=term-missing
+
       - name: Install yamllint
         shell: bash
         run: |

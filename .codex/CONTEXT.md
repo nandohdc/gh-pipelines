@@ -73,7 +73,7 @@
   - calls `ci-go.yml`, `ci-node.yml`, `ci-python.yml`, `ci-with-sonar-{go,node,python}.yml`, and `ci-terraform.yml` via relative `uses:`
   - validates against fixtures in `tests/fixtures/{go,node,python,terraform}`
 - Internal release automation workflow:
-  - triggers on `push` to `main`
+  - `.github/workflows/release.yml` triggers on `push` to `main` and delegates execution to `scripts/release.py` (behavior-tested by `scripts/release_test.py`)
   - resolves release labels from the merged PR associated with `GITHUB_SHA`
   - derives semver bump from labels `release:patch|release:minor|release:major`
   - no-ops when no release label exists on the associated merged PR
