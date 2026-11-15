@@ -83,12 +83,14 @@ jobs:
 
       - name: Validate package manager
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm|pnpm|yarn) ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'. Use npm, pnpm, or yarn."
               exit 1
               ;;
           esac
@@ -97,21 +99,29 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
-          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
 
       - name: Enable Corepack
         if: inputs.package-manager != 'npm'
         shell: bash
         run: |
           set -euo pipefail
+          echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
           corepack enable
+
+      - name: Configure Node dependency cache
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
 
       - name: Install dependencies
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm)
               npm ci
               ;;
@@ -122,7 +132,7 @@ jobs:
               yarn install --immutable || yarn install --frozen-lockfile
               ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'."
               exit 1
               ;;
           esac
@@ -131,9 +141,10 @@ jobs:
         shell: bash
         env:
           LINT_SCRIPT: ${{ inputs.lint-script }}
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm)
               npm run "${LINT_SCRIPT}"
               ;;
@@ -144,7 +155,7 @@ jobs:
               yarn "${LINT_SCRIPT}"
               ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'."
               exit 1
               ;;
           esac
@@ -164,12 +175,14 @@ jobs:
 
       - name: Validate package manager
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm|pnpm|yarn) ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'. Use npm, pnpm, or yarn."
               exit 1
               ;;
           esac
@@ -178,21 +191,29 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
-          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
 
       - name: Enable Corepack
         if: inputs.package-manager != 'npm'
         shell: bash
         run: |
           set -euo pipefail
+          echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
           corepack enable
+
+      - name: Configure Node dependency cache
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
 
       - name: Install dependencies
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm)
               npm ci
               ;;
@@ -203,7 +224,7 @@ jobs:
               yarn install --immutable || yarn install --frozen-lockfile
               ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'."
               exit 1
               ;;
           esac
@@ -213,10 +234,11 @@ jobs:
         env:
           TEST_SCRIPT: ${{ inputs.test-script }}
           COVERAGE_MIN: ${{ inputs.coverage-min }}
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
 
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm)
               npm run "${TEST_SCRIPT}"
               ;;
@@ -227,7 +249,7 @@ jobs:
               yarn "${TEST_SCRIPT}"
               ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'."
               exit 1
               ;;
           esac
@@ -271,12 +293,14 @@ jobs:
 
       - name: Validate package manager
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm|pnpm|yarn) ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'. Use npm, pnpm, or yarn."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'. Use npm, pnpm, or yarn."
               exit 1
               ;;
           esac
@@ -285,21 +309,29 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: ${{ inputs.node-version }}
-          cache: ${{ inputs.package-manager }}
-          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
 
       - name: Enable Corepack
         if: inputs.package-manager != 'npm'
         shell: bash
         run: |
           set -euo pipefail
+          echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
           corepack enable
+
+      - name: Configure Node dependency cache
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ inputs.node-version }}
+          cache: ${{ inputs.package-manager }}
+          cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
 
       - name: Install dependencies
         shell: bash
+        env:
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm)
               npm ci
               ;;
@@ -310,7 +342,7 @@ jobs:
               yarn install --immutable || yarn install --frozen-lockfile
               ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'."
               exit 1
               ;;
           esac
@@ -319,9 +351,10 @@ jobs:
         shell: bash
         env:
           AUDIT_LEVEL: ${{ inputs.audit-level }}
+          PACKAGE_MANAGER: ${{ inputs.package-manager }}
         run: |
           set -euo pipefail
-          case "${{ inputs.package-manager }}" in
+          case "${PACKAGE_MANAGER}" in
             npm)
               npm audit --audit-level="${AUDIT_LEVEL}"
               ;;
@@ -336,7 +369,7 @@ jobs:
               fi
               ;;
             *)
-              echo "::error::Unsupported package-manager '${{ inputs.package-manager }}'."
+              echo "::error::Unsupported package-manager '${PACKAGE_MANAGER}'."
               exit 1
               ;;
           esac

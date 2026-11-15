@@ -85,6 +85,9 @@
   - `.github/workflows/security-self-scan.yml`
   - runs `zizmor` high-severity gate plus `actionlint -shellcheck=shellcheck` checks
   - produces required status-check contexts `zizmor` and `shellcheck` on pull requests
+- Node clean-runner package-manager contract (`actions/setup-node/action.yml`, `.github/workflows/ci-node.yml`):
+  - initializes Node without cache first, enables `corepack enable` with `COREPACK_ENABLE_DOWNLOAD_PROMPT=0` for `pnpm`/`yarn`, and only then configures dependency cache so clean runners without preinstalled `pnpm`/`yarn` succeed
+  - behavior-guarded by `scripts/node_setup_workflow_contract_test.py` and hosted fixtures `tests/fixtures/{node,node-pnpm,node-yarn}` in `test-callers.yml`
 - Internal Dependabot auto-merge workflow:
   - `.github/workflows/dependabot-auto-merge.yml`
   - runs on `pull_request_target` and is scoped to Dependabot PRs targeting `main`

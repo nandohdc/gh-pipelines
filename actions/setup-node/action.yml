@@ -32,16 +32,7 @@ runs:
             ;;
         esac
 
-    - name: Set up Node ${{ inputs.node-version }} (with cache)
-      if: inputs.cache == 'true'
-      uses: actions/setup-node@v7
-      with:
-        node-version: ${{ inputs.node-version }}
-        cache: ${{ inputs.package-manager }}
-        cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
-
-    - name: Set up Node ${{ inputs.node-version }} (no cache)
-      if: inputs.cache != 'true'
+    - name: Set up Node ${{ inputs.node-version }}
       uses: actions/setup-node@v7
       with:
         node-version: ${{ inputs.node-version }}
@@ -51,4 +42,13 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
+        echo "COREPACK_ENABLE_DOWNLOAD_PROMPT=0" >> "${GITHUB_ENV}"
         corepack enable
+
+    - name: Configure Node ${{ inputs.package-manager }} cache
+      if: inputs.cache == 'true'
+      uses: actions/setup-node@v7
+      with:
+        node-version: ${{ inputs.node-version }}
+        cache: ${{ inputs.package-manager }}
+        cache-dependency-path: ${{ inputs.package-manager == 'npm' && '**/package-lock.json' || inputs.package-manager == 'pnpm' && '**/pnpm-lock.yaml' || '**/yarn.lock' }}
