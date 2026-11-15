@@ -815,15 +815,19 @@ def run_candidate_smoke(
 
     smoke_branch = f"smoke/candidate-{candidate_sha[:12]}-{request_id}"
     resolved_remote = remote_url or f"https://x-access-token@github.com/{config.consumer_repo}.git"
+    effective_token = token or getattr(github, "_token", None)
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        git_env = _make_git_askpass(tmp_path, token) if token else dict(os.environ)
+        if effective_token:
+            git_env = _make_git_askpass(tmp_path, effective_token)
+        else:
+            git_env = {**os.environ, "GIT_TERMINAL_PROMPT": "0"}
         consumer_dir = tmp_path / "consumer"
         _run_cmd(
             ["git", "clone", "--depth", "1", "--branch", "main", resolved_remote, str(consumer_dir)],
             env=git_env,
-            token=token,
+            token=effective_token,
         )
         _run_cmd(["git", "config", "user.name", "github-actions[bot]"], cwd=consumer_dir, env=git_env)
         _run_cmd(
@@ -850,7 +854,7 @@ def run_candidate_smoke(
                 ["git", "push", "-u", "origin", smoke_branch],
                 cwd=consumer_dir,
                 env=git_env,
-                token=token,
+                token=effective_token,
             )
             pushed = True
             github.dispatch_workflow(
@@ -876,7 +880,7 @@ def run_candidate_smoke(
             )
         finally:
             if pushed:
-                _delete_remote_branch(consumer_dir, smoke_branch, git_env, token)
+                _delete_remote_branch(consumer_dir, smoke_branch, git_env, effective_token)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

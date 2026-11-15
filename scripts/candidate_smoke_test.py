@@ -413,6 +413,81 @@ class CandidateSmokeTests(unittest.TestCase):
             ).stdout
             self.assertNotIn("req-fail-cleanup", branches_after_fail)
 
+    def test_run_candidate_smoke_uses_client_token_and_disables_terminal_prompts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            bare_remote = _create_bare_consumer_remote(tmp_path)
+            observed_envs: List[Dict[str, str]] = []
+            original_run_cmd = candidate_smoke._run_cmd
+
+            def spying_run_cmd(cmd: List[str], *, cwd=None, env=None, token=None) -> str:
+                if cmd[:2] == ["git", "clone"] or cmd[:2] == ["git", "push"]:
+                    observed_envs.append(dict(env or {}))
+                return original_run_cmd(cmd, cwd=cwd, env=env, token=token)
+
+            class TokenCarryingGitHub(FakeConsumerGitHub):
+                def __init__(self, token: str) -> None:
+                    super().__init__()
+                    self._token = token
+
+                def dispatch_workflow(
+                    self,
+                    repo: str,
+                    workflow: str,
+                    ref: str,
+                    inputs: Dict[str, str],
+                ) -> None:
+                    super().dispatch_workflow(repo, workflow, ref, inputs)
+                    self.dispatched_runs.append(
+                        {
+                            "id": 778,
+                            "html_url": "https://example.invalid/runs/778",
+                            "status": "completed",
+                            "conclusion": "success",
+                            "event": "workflow_dispatch",
+                            "head_branch": ref,
+                        }
+                    )
+                    self.jobs_by_run[778] = _make_success_jobs(SAMPLE_SHA)
+
+            cfg = candidate_smoke.CandidateSmokeConfig(
+                candidate_sha=SAMPLE_SHA,
+                candidate_dir=ROOT,
+                request_id="req-tok",
+                poll_interval_seconds=0,
+            )
+            with mock.patch.object(candidate_smoke, "_run_cmd", side_effect=spying_run_cmd):
+                outcome = candidate_smoke.run_candidate_smoke(
+                    cfg,
+                    TokenCarryingGitHub("client-tok-123"),
+                    remote_url=str(bare_remote),
+                )
+            self.assertEqual(outcome.status, "passed")
+            self.assertGreaterEqual(len(observed_envs), 2)
+            for captured in observed_envs:
+                self.assertEqual(captured.get("GIT_TERMINAL_PROMPT"), "0")
+                self.assertEqual(captured.get("CANDIDATE_SMOKE_GIT_TOKEN"), "client-tok-123")
+                self.assertTrue(captured.get("GIT_ASKPASS"))
+
+            # When no token is available at all, GIT_TERMINAL_PROMPT=0 is still enforced.
+            observed_envs.clear()
+            with mock.patch.object(candidate_smoke, "_run_cmd", side_effect=spying_run_cmd):
+                candidate_smoke.run_candidate_smoke(
+                    candidate_smoke.CandidateSmokeConfig(
+                        candidate_sha=SAMPLE_SHA,
+                        candidate_dir=ROOT,
+                        request_id="req-notok",
+                        timeout_seconds=5,
+                        poll_interval_seconds=0,
+                    ),
+                    TokenCarryingGitHub(""),
+                    remote_url=str(bare_remote),
+                )
+            self.assertGreaterEqual(len(observed_envs), 2)
+            for captured in observed_envs:
+                self.assertEqual(captured.get("GIT_TERMINAL_PROMPT"), "0")
+                self.assertNotIn("CANDIDATE_SMOKE_GIT_TOKEN", captured)
+
     def test_lint_and_docs_wire_candidate_smoke(self) -> None:
         lint_text = read(ROOT / ".github" / "workflows" / "lint.yml")
         assert_contains(
