@@ -2593,6 +2593,100 @@ class ReleaseCliProcessTest(unittest.TestCase):
             with mock.patch.dict(os.environ, env_patch, clear=False):
                 github.create_release("v2.1.1", sha, "v2.1.1")
 
+    def test_gh_cli_create_release_retries_on_api_integration_403(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gh = root / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys\n"
+                "with open(os.environ['ATTEMPTS_FILE'], 'a') as f:\n"
+                "    f.write(('fallback' if os.environ.get('GH_TOKEN') == 'fallback-token' else 'baseline') + '\\n')\n"
+                "if os.environ.get('GH_TOKEN') != 'fallback-token':\n"
+                "    print('HTTP 403: Resource not accessible by integration (https://api.github.com/repos/nandohdc/gh-pipelines/releases)', file=sys.stderr)\n"
+                "    sys.exit(1)\n",
+                encoding="utf-8",
+            )
+            gh.chmod(0o755)
+            github = GhCliGitHub(workdir=root, repository="nandohdc/gh-pipelines")
+            with mock.patch.dict(os.environ, {
+                "PATH": f"{root}{os.pathsep}{os.environ.get('PATH', '')}",
+                "GH_TOKEN": "baseline-token", "GITHUB_TOKEN": "baseline-token",
+                "RELEASE_TOKEN": "", "INTEGRATION_PAT": "fallback-token",
+                "ATTEMPTS_FILE": str(root / "attempts"),
+            }):
+                github.create_release("v2.1.1", "a" * 40, "v2.1.1")
+            self.assertEqual((root / "attempts").read_text().splitlines(), ["baseline", "fallback"])
+
+    def test_gh_cli_create_release_does_not_retry_unrelated_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gh = root / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys\n"
+                "with open(os.environ['ATTEMPTS_FILE'], 'a') as f: f.write('attempt\\n')\n"
+                "print('HTTP 403: API rate limit exceeded', file=sys.stderr)\n"
+                "sys.exit(1)\n",
+                encoding="utf-8",
+            )
+            gh.chmod(0o755)
+            github = GhCliGitHub(workdir=root, repository="nandohdc/gh-pipelines")
+            with mock.patch.dict(os.environ, {
+                "PATH": f"{root}{os.pathsep}{os.environ.get('PATH', '')}",
+                "GH_TOKEN": "baseline-token", "GITHUB_TOKEN": "baseline-token",
+                "RELEASE_TOKEN": "fallback-token", "INTEGRATION_PAT": "",
+                "ATTEMPTS_FILE": str(root / "attempts"),
+            }):
+                with self.assertRaisesRegex(ReleaseError, "API rate limit exceeded"):
+                    github.create_release("v2.1.1", "a" * 40, "v2.1.1")
+            self.assertEqual((root / "attempts").read_text().splitlines(), ["attempt"])
+
+    def test_gh_cli_create_release_redacts_rejected_fallback_tokens(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gh = root / "gh"
+            gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys\n"
+                "print('HTTP 403: Resource not accessible by integration ' + os.environ['GH_TOKEN'], file=sys.stderr)\n"
+                "sys.exit(1)\n",
+                encoding="utf-8",
+            )
+            gh.chmod(0o755)
+            github = GhCliGitHub(workdir=root, repository="nandohdc/gh-pipelines")
+            with mock.patch.dict(os.environ, {
+                "PATH": f"{root}{os.pathsep}{os.environ.get('PATH', '')}",
+                "GH_TOKEN": "baseline-secret", "GITHUB_TOKEN": "baseline-secret",
+                "RELEASE_TOKEN": "release-secret", "INTEGRATION_PAT": "integration-secret",
+            }):
+                with self.assertRaises(ReleaseError) as error:
+                    github.create_release("v2.1.1", "a" * 40, "v2.1.1")
+            message = str(error.exception)
+            self.assertIn("RELEASE_TOKEN, INTEGRATION_PAT", message)
+            for secret in ("baseline-secret", "release-secret", "integration-secret"):
+                self.assertNotIn(secret, message)
+
+    def test_gh_cli_create_release_reports_missing_fallback_token(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            gh = root / "gh"
+            gh.write_text(
+                "#!/bin/sh\n"
+                "echo 'HTTP 403: Resource not accessible by integration' >&2\n"
+                "exit 1\n",
+                encoding="utf-8",
+            )
+            gh.chmod(0o755)
+            github = GhCliGitHub(workdir=root, repository="nandohdc/gh-pipelines")
+            with mock.patch.dict(os.environ, {
+                "PATH": f"{root}{os.pathsep}{os.environ.get('PATH', '')}",
+                "GH_TOKEN": "baseline-token", "GITHUB_TOKEN": "baseline-token",
+                "RELEASE_TOKEN": "", "INTEGRATION_PAT": "",
+            }):
+                with self.assertRaisesRegex(ReleaseError, "Configure repository secret RELEASE_TOKEN"):
+                    github.create_release("v2.1.1", "a" * 40, "v2.1.1")
+
     def test_release_workflow_forwards_optional_release_token(self) -> None:
         workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release.yml"
         content = workflow_path.read_text(encoding="utf-8")

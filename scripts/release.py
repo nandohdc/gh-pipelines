@@ -15,7 +15,7 @@ import tempfile
 import time
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
+from typing import Any, Callable, Dict, Iterator, List, Optional, Protocol, Sequence, Tuple
 
 REQUIRED_CI_CHECKS: Tuple[Tuple[str, str], ...] = (
     (".github/workflows/lint.yml", "lint"),
@@ -159,6 +159,12 @@ def _is_workflow_permission_error(detail: str) -> bool:
     )
 
 
+def _is_release_creation_permission_error(detail: str) -> bool:
+    return _is_workflow_permission_error(detail) or (
+        "http 403: resource not accessible by integration" in detail.lower()
+    )
+
+
 def _all_secret_env_tokens() -> Tuple[str, ...]:
     tokens: List[str] = []
     for name in _SECRET_ENV_NAMES:
@@ -246,12 +252,13 @@ def _run_with_workflow_token_fallback(
     *,
     action_label: str,
     build_retry: Any,
+    is_retryable: Callable[[str], bool] = _is_workflow_permission_error,
 ) -> str:
-    """Execute cmd; if GitHub rejects it for missing workflows permission, retry with elevated tokens."""
+    """Retry recognized permission failures with configured fallback credentials."""
     try:
         return _run_checked(cmd, workdir)
     except ReleaseError as initial_exc:
-        if not _is_workflow_permission_error(str(initial_exc)):
+        if not is_retryable(str(initial_exc)):
             raise
         candidates = _candidate_workflow_tokens()
         if not candidates:
@@ -278,7 +285,7 @@ def _run_with_workflow_token_fallback(
             except ReleaseError as exc:
                 last_exc = exc
         raise ReleaseError(
-            f"{action_label} rejected due to missing GitHub 'workflows' permission; "
+            f"{action_label} rejected due to a GitHub permission error; "
             f"attempted fallback credential(s) {', '.join(attempted)} also failed: {last_exc}. "
             "Configure repository secret RELEASE_TOKEN with Contents (Read and write) and "
             "Workflows (Read and write) permissions."
@@ -384,6 +391,7 @@ class GhCliGitHub:
             self._workdir,
             action_label=f"GitHub release {tag}",
             build_retry=lambda token, _tmp: (cmd, {**os.environ, "GH_TOKEN": token}),
+            is_retryable=_is_release_creation_permission_error,
         )
 
     def _paginated_collection(
