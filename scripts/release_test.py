@@ -20,6 +20,7 @@ from scripts.release import (
     ReleaseError,
     ReleaseOutcome,
     ReleasePlan,
+    _publish_tags,
     run_release,
     verify_promotion_gate,
 )
@@ -2441,6 +2442,163 @@ class ReleaseCliProcessTest(unittest.TestCase):
 
             self.assertEqual(outcome["status"], "passed")
             self.assertEqual(captured_kwargs.get("token"), "pat-secret")
+
+    def test_publish_tags_retries_with_release_or_integration_token_when_workflow_permission_rejected(
+        self,
+    ) -> None:
+        hook_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "token=''\n"
+            "if [[ -n \"${GIT_ASKPASS:-}\" && -x \"${GIT_ASKPASS}\" ]]; then\n"
+            "  token=$(\"${GIT_ASKPASS}\" \"Password for 'https://github.com':\")\n"
+            "fi\n"
+            "while read -r _oldrev _newrev refname; do\n"
+            "  if [[ \"${token}\" != \"workflow-pat-secret\" ]]; then\n"
+            "    echo \" ! [remote rejected] ${refname#refs/tags/} -> ${refname#refs/tags/} (refusing to allow a GitHub App to create or update workflow \\`.github/workflows/ci-go.yml\\` without \\`workflows\\` permission)\" >&2\n"
+            "    exit 1\n"
+            "  fi\n"
+            "done\n"
+        )
+        for env_key in ("RELEASE_TOKEN", "INTEGRATION_PAT"):
+            with self.subTest(fallback_env=env_key), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                bare, work, base_sha = _create_repo_with_bare_remote(root)
+                _git(bare, "update-ref", "refs/tags/v2.1.0", base_sha)
+                _git(bare, "update-ref", "refs/tags/v2", base_sha)
+                (work / "README.md").write_text("bump\n", encoding="utf-8")
+                _git(work, "add", ".")
+                _git(work, "commit", "-m", "chore: bump (#162)")
+                _git(work, "push", "origin", "main")
+                sha2 = _git(work, "rev-parse", "HEAD")
+
+                hook = bare / "hooks" / "pre-receive"
+                hook.write_text(hook_script, encoding="utf-8")
+                hook.chmod(0o755)
+
+                config = ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=sha2,
+                    workdir=work,
+                    remote="origin",
+                )
+                plan = ReleasePlan(
+                    pr_number=162,
+                    release_type="patch",
+                    target_major=2,
+                    target_lineage="v2",
+                    latest_tag="v2.1.0",
+                    next_tag="v2.1.1",
+                    floating_tag="v2",
+                    target_sha=sha2,
+                )
+                env_patch = {
+                    "GH_TOKEN": "ghs_unprivileged",
+                    "GITHUB_TOKEN": "ghs_unprivileged",
+                    env_key: "workflow-pat-secret",
+                }
+                if env_key == "INTEGRATION_PAT":
+                    env_patch["RELEASE_TOKEN"] = ""
+                else:
+                    env_patch["INTEGRATION_PAT"] = ""
+                with mock.patch.dict(os.environ, env_patch, clear=False):
+                    exact_effect, floating_effect = _publish_tags(config, plan)
+
+                self.assertEqual(exact_effect, "created")
+                self.assertEqual(floating_effect, "moved")
+                self.assertEqual(_git(bare, "rev-parse", "refs/tags/v2.1.1"), sha2)
+                self.assertEqual(_git(bare, "rev-parse", "refs/tags/v2"), sha2)
+
+    def test_publish_tags_fails_closed_and_redacts_when_fallback_token_missing_or_rejected(
+        self,
+    ) -> None:
+        hook_script = (
+            "#!/usr/bin/env bash\n"
+            "set -euo pipefail\n"
+            "while read -r _oldrev _newrev refname; do\n"
+            "  echo \" ! [remote rejected] ${refname#refs/tags/} -> ${refname#refs/tags/} (refusing to allow a GitHub App to create or update workflow \\`.github/workflows/ci-go.yml\\` without \\`workflows\\` permission)\" >&2\n"
+            "  exit 1\n"
+            "done\n"
+        )
+        cases = (
+            ("missing", {"GH_TOKEN": "ghs_unpriv", "GITHUB_TOKEN": "ghs_unpriv", "RELEASE_TOKEN": "", "INTEGRATION_PAT": ""}),
+            ("rejected", {"GH_TOKEN": "ghs_unpriv", "GITHUB_TOKEN": "ghs_unpriv", "RELEASE_TOKEN": "secret-rel-123", "INTEGRATION_PAT": "secret-int-456"}),
+        )
+        for label, env_patch in cases:
+            with self.subTest(case=label), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                bare, work, base_sha = _create_repo_with_bare_remote(root)
+                _git(bare, "update-ref", "refs/tags/v2.1.0", base_sha)
+                (work / "README.md").write_text("bump\n", encoding="utf-8")
+                _git(work, "add", ".")
+                _git(work, "commit", "-m", "chore: bump (#162)")
+                _git(work, "push", "origin", "main")
+                sha2 = _git(work, "rev-parse", "HEAD")
+
+                hook = bare / "hooks" / "pre-receive"
+                hook.write_text(hook_script, encoding="utf-8")
+                hook.chmod(0o755)
+
+                config = ReleaseConfig(
+                    repository="nandohdc/gh-pipelines",
+                    sha=sha2,
+                    workdir=work,
+                    remote="origin",
+                )
+                plan = ReleasePlan(
+                    pr_number=162,
+                    release_type="patch",
+                    target_major=2,
+                    target_lineage="v2",
+                    latest_tag="v2.1.0",
+                    next_tag="v2.1.1",
+                    floating_tag="v2",
+                    target_sha=sha2,
+                )
+                with mock.patch.dict(os.environ, env_patch, clear=False):
+                    with self.assertRaises(ReleaseError) as ctx:
+                        _publish_tags(config, plan)
+                msg = str(ctx.exception)
+                self.assertIn("RELEASE_TOKEN", msg)
+                self.assertNotIn("secret-rel-123", msg)
+                self.assertNotIn("secret-int-456", msg)
+                self.assertNotIn("ghs_unpriv", msg)
+
+    def test_gh_cli_create_release_retries_with_elevated_token_on_workflow_permission_error(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            _, work, sha = _create_repo_with_bare_remote(root)
+            bin_dir = root / "bin"
+            bin_dir.mkdir()
+            fake_gh = bin_dir / "gh"
+            fake_gh.write_text(
+                "#!/usr/bin/env python3\n"
+                "import os, sys\n"
+                "tok = os.environ.get('GH_TOKEN', '')\n"
+                "if tok != 'workflow-pat-secret':\n"
+                "    print('! [remote rejected] refusing to allow a GitHub App to create or update workflow .github/workflows/ci-go.yml without workflows permission', file=sys.stderr)\n"
+                "    sys.exit(1)\n"
+                "sys.exit(0)\n",
+                encoding="utf-8",
+            )
+            fake_gh.chmod(0o755)
+            github = GhCliGitHub(workdir=work, repository="nandohdc/gh-pipelines")
+            env_patch = {
+                "PATH": f"{bin_dir}{os.pathsep}{os.environ.get('PATH', '')}",
+                "GH_TOKEN": "ghs_unprivileged",
+                "RELEASE_TOKEN": "workflow-pat-secret",
+            }
+            with mock.patch.dict(os.environ, env_patch, clear=False):
+                github.create_release("v2.1.1", sha, "v2.1.1")
+
+    def test_release_workflow_forwards_optional_release_token(self) -> None:
+        workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release.yml"
+        content = workflow_path.read_text(encoding="utf-8")
+        self.assertIn("token: ${{ secrets.RELEASE_TOKEN || github.token }}", content)
+        self.assertIn("RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}", content)
+        self.assertIn("INTEGRATION_PAT: ${{ secrets.INTEGRATION_PAT }}", content)
 
 
 if __name__ == "__main__":

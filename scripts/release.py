@@ -8,6 +8,7 @@ import contextlib
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import tempfile
@@ -54,6 +55,14 @@ _RELEASE_LABEL_PRECEDENCE = (
 )
 _BOT_NAME = "github-actions[bot]"
 _BOT_EMAIL = "github-actions[bot]@users.noreply.github.com"
+_WORKFLOW_TOKEN_ENV_PRIORITY = ("RELEASE_TOKEN", "INTEGRATION_PAT")
+_SECRET_ENV_NAMES = (
+    "GH_TOKEN",
+    "GITHUB_TOKEN",
+    "RELEASE_TOKEN",
+    "INTEGRATION_PAT",
+    "CANDIDATE_SMOKE_TOKEN",
+)
 
 
 class ReleaseError(RuntimeError):
@@ -143,21 +152,137 @@ class ReleaseOutcome:
     reconciled_outcomes: Tuple["ReleaseOutcome", ...] = ()
 
 
-def _run_cmd(cmd: Sequence[str], workdir: Path) -> subprocess.CompletedProcess:
+def _is_workflow_permission_error(detail: str) -> bool:
+    lowered = detail.lower()
+    return "workflows" in lowered and "permission" in lowered and (
+        "create or update workflow" in lowered or "without" in lowered
+    )
+
+
+def _all_secret_env_tokens() -> Tuple[str, ...]:
+    tokens: List[str] = []
+    for name in _SECRET_ENV_NAMES:
+        val = os.environ.get(name, "").strip()
+        if val and val not in tokens:
+            tokens.append(val)
+    return tuple(tokens)
+
+
+def _redact_tokens(text: str, tokens: Sequence[str] = ()) -> str:
+    redacted = text
+    for token in (*tokens, *_all_secret_env_tokens()):
+        if token and token in redacted:
+            redacted = redacted.replace(token, "***")
+    return redacted
+
+
+def _candidate_workflow_tokens() -> List[Tuple[str, str]]:
+    baseline = {
+        val
+        for name in ("GH_TOKEN", "GITHUB_TOKEN")
+        if (val := os.environ.get(name, "").strip())
+    }
+    candidates: List[Tuple[str, str]] = []
+    seen = set(baseline)
+    for env_name in _WORKFLOW_TOKEN_ENV_PRIORITY:
+        value = os.environ.get(env_name, "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        candidates.append((env_name, value))
+    return candidates
+
+
+def _make_release_git_askpass(tmp_path: Path, token: str) -> Dict[str, str]:
+    askpass = tmp_path / "git-askpass.sh"
+    askpass.write_text(
+        "#!/bin/sh\n"
+        "case \"$1\" in\n"
+        "  *[Uu]sername*) printf '%s\\n' \"x-access-token\" ;;\n"
+        "  *) printf '%s\\n' \"${_RELEASE_GIT_TOKEN}\" ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    askpass.chmod(stat.S_IRUSR | stat.S_IWUSR | stat.S_IXUSR)
+    env = dict(os.environ)
+    env["_RELEASE_GIT_TOKEN"] = token
+    env["GIT_ASKPASS"] = str(askpass)
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    return env
+
+
+def _run_cmd(
+    cmd: Sequence[str],
+    workdir: Path,
+    *,
+    env: Optional[Dict[str, str]] = None,
+) -> subprocess.CompletedProcess:
     return subprocess.run(
         list(cmd),
         cwd=workdir,
+        env=env,
         capture_output=True,
         text=True,
     )
 
 
-def _run_checked(cmd: Sequence[str], workdir: Path) -> str:
-    result = _run_cmd(cmd, workdir)
+def _run_checked(
+    cmd: Sequence[str],
+    workdir: Path,
+    *,
+    env: Optional[Dict[str, str]] = None,
+    redact: Sequence[str] = (),
+) -> str:
+    result = _run_cmd(cmd, workdir, env=env)
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
+        detail = _redact_tokens((result.stderr or result.stdout).strip(), redact)
         raise ReleaseError(f"{' '.join(cmd)} failed: {detail}")
     return result.stdout
+
+
+def _run_with_workflow_token_fallback(
+    cmd: Sequence[str],
+    workdir: Path,
+    *,
+    action_label: str,
+    build_retry: Any,
+) -> str:
+    """Execute cmd; if GitHub rejects it for missing workflows permission, retry with elevated tokens."""
+    try:
+        return _run_checked(cmd, workdir)
+    except ReleaseError as initial_exc:
+        if not _is_workflow_permission_error(str(initial_exc)):
+            raise
+        candidates = _candidate_workflow_tokens()
+        if not candidates:
+            raise ReleaseError(
+                f"{initial_exc}. Configure repository secret RELEASE_TOKEN with Contents "
+                "(Read and write) and Workflows (Read and write) permissions."
+            ) from initial_exc
+        attempted: List[str] = []
+        last_exc: ReleaseError = initial_exc
+        redact = [tok for _, tok in candidates]
+        for env_name, token in candidates:
+            attempted.append(env_name)
+            try:
+                with tempfile.TemporaryDirectory() as tmp:
+                    retry_cmd, retry_env = build_retry(token, Path(tmp))
+                    output = _run_checked(
+                        retry_cmd,
+                        workdir,
+                        env=retry_env,
+                        redact=redact,
+                    )
+                print(f"{action_label} succeeded using fallback credential {env_name}.")
+                return output
+            except ReleaseError as exc:
+                last_exc = exc
+        raise ReleaseError(
+            f"{action_label} rejected due to missing GitHub 'workflows' permission; "
+            f"attempted fallback credential(s) {', '.join(attempted)} also failed: {last_exc}. "
+            "Configure repository secret RELEASE_TOKEN with Contents (Read and write) and "
+            "Workflows (Read and write) permissions."
+        ) from last_exc
 
 
 def _load_candidate_smoke() -> Any:
@@ -243,19 +368,22 @@ class GhCliGitHub:
         raise ReleaseError(f"gh release view {tag} failed: {detail}")
 
     def create_release(self, tag: str, target_sha: str, title: str) -> None:
-        _run_checked(
-            [
-                "gh",
-                "release",
-                "create",
-                tag,
-                "--target",
-                target_sha,
-                "--title",
-                title,
-                "--generate-notes",
-            ],
+        cmd = [
+            "gh",
+            "release",
+            "create",
+            tag,
+            "--target",
+            target_sha,
+            "--title",
+            title,
+            "--generate-notes",
+        ]
+        _run_with_workflow_token_fallback(
+            cmd,
             self._workdir,
+            action_label=f"GitHub release {tag}",
+            build_retry=lambda token, _tmp: (cmd, {**os.environ, "GH_TOKEN": token}),
         )
 
     def _paginated_collection(
@@ -1015,6 +1143,32 @@ def _resolve_local_tag_commit(config: ReleaseConfig, tag: str) -> Optional[str]:
     return result.stdout.strip()
 
 
+def _push_tag_ref(config: ReleaseConfig, tag: str, *, force: bool = False) -> None:
+    push_args = [config.remote, f"refs/tags/{tag}"]
+    if force:
+        push_args.append("--force")
+
+    def _build_git_retry(token: str, tmp_path: Path) -> Tuple[Sequence[str], Dict[str, str]]:
+        # Clear checkout's persisted GITHUB_TOKEN extraheader and credential helpers so GIT_ASKPASS supplies token.
+        retry_cmd = [
+            "git",
+            "-c",
+            "http.https://github.com/.extraheader=",
+            "-c",
+            "credential.helper=",
+            "push",
+            *push_args,
+        ]
+        return retry_cmd, _make_release_git_askpass(tmp_path, token)
+
+    _run_with_workflow_token_fallback(
+        ["git", "push", *push_args],
+        config.workdir,
+        action_label=f"Tag push refs/tags/{tag}",
+        build_retry=_build_git_retry,
+    )
+
+
 def _publish_tags(config: ReleaseConfig, plan: ReleasePlan) -> Tuple[str, str]:
     _run_checked(["git", "config", "user.name", _BOT_NAME], config.workdir)
     _run_checked(["git", "config", "user.email", _BOT_EMAIL], config.workdir)
@@ -1039,7 +1193,7 @@ def _publish_tags(config: ReleaseConfig, plan: ReleasePlan) -> Tuple[str, str]:
     else:
         if local_sha is None:
             _run_checked(["git", "tag", plan.next_tag, config.sha], config.workdir)
-        _run_checked(["git", "push", config.remote, f"refs/tags/{plan.next_tag}"], config.workdir)
+        _push_tag_ref(config, plan.next_tag)
         exact_effect = "created"
 
     current_floating_sha = _resolve_remote_tag_commit(config, plan.floating_tag)
@@ -1061,17 +1215,11 @@ def _publish_tags(config: ReleaseConfig, plan: ReleasePlan) -> Tuple[str, str]:
             )
         else:
             _run_checked(["git", "tag", "-f", plan.floating_tag, config.sha], config.workdir)
-            _run_checked(
-                ["git", "push", config.remote, f"refs/tags/{plan.floating_tag}", "--force"],
-                config.workdir,
-            )
+            _push_tag_ref(config, plan.floating_tag, force=True)
             floating_effect = "moved"
     else:
         _run_checked(["git", "tag", "-f", plan.floating_tag, config.sha], config.workdir)
-        _run_checked(
-            ["git", "push", config.remote, f"refs/tags/{plan.floating_tag}", "--force"],
-            config.workdir,
-        )
+        _push_tag_ref(config, plan.floating_tag, force=True)
         floating_effect = "created"
 
     return exact_effect, floating_effect

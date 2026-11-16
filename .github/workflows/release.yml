@@ -12,8 +12,10 @@
 #   - no release label -> no release action (workflow exits successfully)
 #
 # Auth decision:
-#   - Option (a): uses GITHUB_TOKEN and assumes floating major tags (`v1`, `v2`, ...)
-#     are not protected against force-updates by the release workflow.
+#   - Uses GITHUB_TOKEN by default (assuming floating major tags v1, v2, ... are
+#     not protected against force-updates) and falls back to RELEASE_TOKEN (or
+#     INTEGRATION_PAT) when GitHub rejects tag pushes touching .github/workflows/
+#     due to GITHUB_TOKEN lacking `workflows` permission.
 # =============================================================================
 
 name: release
@@ -45,6 +47,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+          token: ${{ secrets.RELEASE_TOKEN || github.token }}
 
       - name: Set up Python
         uses: actions/setup-python@v7
@@ -61,6 +64,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
           CANDIDATE_SMOKE_TOKEN: ${{ secrets.CANDIDATE_SMOKE_TOKEN }}
           INTEGRATION_PAT: ${{ secrets.INTEGRATION_PAT }}
           HEAD_COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
