@@ -154,7 +154,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@v2
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -227,7 +227,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@v2
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -307,7 +307,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@v2
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
@@ -358,7 +358,7 @@ jobs:
           fi
 
       - name: Setup Go
-        uses: nandohdc/gh-pipelines/actions/setup-go@v1
+        uses: nandohdc/gh-pipelines/actions/setup-go@v2
         with:
           go-version: ${{ inputs.go-version }}
           working-directory: ${{ inputs.working-directory }}
