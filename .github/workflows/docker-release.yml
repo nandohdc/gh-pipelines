@@ -114,7 +114,7 @@ jobs:
       # --- Supply-chain security artifacts ---
 
       - name: Generate SBOMs, sign image, and emit provenance
-        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v2
         with:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ steps.build.outputs.digest }}

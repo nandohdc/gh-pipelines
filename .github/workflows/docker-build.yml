@@ -119,7 +119,7 @@ jobs:
 
       - name: Extract image metadata
         id: meta
-        uses: nandohdc/gh-pipelines/actions/docker-meta@v1
+        uses: nandohdc/gh-pipelines/actions/docker-meta@v2
         with:
           image-name: ${{ inputs.image-name }}
           extra-tags: ${{ inputs.extra-tags }}
@@ -156,7 +156,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Generate SBOM artifacts
-        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v2
         with:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
@@ -182,7 +182,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign image digest
-        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v2
         with:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
@@ -254,7 +254,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Attest SPDX SBOM
-        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v2
         with:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
@@ -329,7 +329,7 @@ jobs:
       attestations: write
     steps:
       - name: Generate provenance attestation
-        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v1
+        uses: nandohdc/gh-pipelines/actions/supply-chain-attest@v2
         with:
           image-name: ${{ inputs.image-name }}
           image-digest: ${{ needs.build.outputs.digest }}
